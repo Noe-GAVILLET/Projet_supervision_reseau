@@ -18,7 +18,7 @@ Cette documentation décrit l'environnement de travail mis en place pour la gest
 
 Site de management de la BDD : http://192.168.141.115:8080/
 
-MYSQL_DATABASE: SNMP
-MYSQL_PASSWORD: sqluser_password
-MYSQL_ROOT_PASSWORD: password
-MYSQL_USER: sqluser
+- MYSQL_DATABASE: SNMP
+- MYSQL_PASSWORD: sqluser_password
+- MYSQL_ROOT_PASSWORD: password
+- MYSQL_USER: sqluser
