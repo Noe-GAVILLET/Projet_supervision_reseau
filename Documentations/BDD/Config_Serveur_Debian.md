@@ -13,3 +13,12 @@ Cette documentation décrit l'environnement de travail mis en place pour la gest
 - **Hostname** : Debian
 - **Adresse IP** : 192.168.141.115
 - **Connexion SSH** : Ok avec le compte debian
+
+
+
+Site de management de la BDD : http://192.168.141.115:8080/
+
+MYSQL_DATABASE: SNMP
+MYSQL_PASSWORD: sqluser_password
+MYSQL_ROOT_PASSWORD: password
+MYSQL_USER: sqluser
