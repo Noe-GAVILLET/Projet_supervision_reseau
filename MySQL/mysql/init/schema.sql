@@ -91,6 +91,23 @@ CREATE TABLE IF NOT EXISTS `host_tags` (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Alertes (historique des alertes)
+CREATE TABLE IF NOT EXISTS `alerts` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `host_id` INT UNSIGNED DEFAULT NULL,
+  `severity` ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
+  `message` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_alerts_created_at` (`created_at`),
+  KEY `idx_alerts_severity` (`severity`),
+  KEY `idx_alerts_host_id` (`host_id`),
+  CONSTRAINT `fk_alerts_host`
+    FOREIGN KEY (`host_id`) REFERENCES `hosts` (`id`)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 -- (Optionnel) utilisateur admin par défaut (hash SHA2 pour exemple)
 -- ATTENTION : en prod, stocke un hash bcrypt/argon2 géré côté app.
 INSERT INTO `users` (`username`,`email`,`password_hash`,`role`)
