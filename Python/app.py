@@ -3,10 +3,14 @@ import os
 import ipaddress
 import hashlib
 from functools import wraps
+import random
+from datetime import datetime, timedelta
 
 from flask import Flask, render_template, redirect, url_for, request, session, flash, g, jsonify, abort
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy import or_
+
 
 # -----------------------------------------------------------------------------
 # Config Flask + DB (adaptée à ton serveur MySQL Docker: 192.168.141.115:3002)
@@ -79,9 +83,19 @@ class Host(db.Model):
     tags = db.relationship("Tag", secondary=host_tags, lazy="subquery",
                            backref=db.backref("hosts", lazy=True))
 
+class Alert(db.Model):
+    __tablename__ = "alerts"
+    id = db.Column(db.Integer, primary_key=True)
+    host_id = db.Column(db.Integer, db.ForeignKey("hosts.id"), nullable=True)
+    severity = db.Column(db.Enum("info", "warning", "critical", name="severity_enum"), nullable=False, default="info")
+    message = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
+
+    host = db.relationship("Host", backref=db.backref("alerts", lazy=True))
+
 # Optionnel : ne pas forcer la création si le schéma existe déjà en BDD
-# with app.app_context():
-#     db.create_all()
+#with app.app_context():
+#    db.create_all()
 
 # -----------------------------------------------------------------------------
 # Auth via BDD
@@ -117,6 +131,32 @@ def verify_password(stored_hash: str, password_plain: str) -> bool:
         pass
     h = hashlib.sha256(password_plain.encode("utf-8")).hexdigest().upper()
     return h == stored_hash
+
+def seed_fake_alerts(n=12):
+    """Génère des fausses alertes si la table est vide (dev)."""
+    hosts = Host.query.all()
+    if not hosts:
+        demo = Host(hostname="demo-sw1", ip="192.168.0.10", port=161, description="Host de démonstration")
+        db.session.add(demo)
+        db.session.commit()
+        hosts = [demo]
+
+    severities = ["info", "warning", "critical"]
+    messages = [
+        "CPU usage high", "Temp threshold exceeded", "Interface down",
+        "SNMP timeout", "Disk space low", "Link flapping",
+        "Device unreachable", "Config change detected",
+    ]
+    now = datetime.utcnow()
+    fake = []
+    for _ in range(n):
+        h = random.choice(hosts)
+        sev = random.choices(severities, weights=[2, 3, 1])[0]  # plus de warnings
+        msg = random.choice(messages)
+        ts = now - timedelta(minutes=random.randint(1, 24 * 60))
+        fake.append(Alert(host_id=h.id, severity=sev, message=f"{h.hostname}: {msg}", created_at=ts))
+    db.session.add_all(fake)
+    db.session.commit()
 
 
 @app.before_request
@@ -154,6 +194,52 @@ def logout():
     session.clear()
     flash("Déconnecté.", "info")
     return redirect(url_for("login"))
+
+@app.route("/hosts")
+@login_required
+def hosts_list():
+    hosts = Host.query.order_by(Host.hostname.asc()).all()
+    return render_template("admin.html", hosts=hosts, title="Liste des hôtes")
+
+@app.route("/hosts/search")
+@login_required
+def hosts_search():
+    q = request.args.get("q", "").strip()
+
+    hosts = []
+    if q:
+        query = (db.session.query(Host)
+                 .outerjoin(Group, Host.group)
+                 .outerjoin(Template, Host.template)
+                 .outerjoin(host_tags)
+                 .outerjoin(Tag))
+        hosts = (query.filter(or_(
+                    Host.hostname.ilike(f"%{q}%"),
+                    Host.ip.ilike(f"%{q}%"),
+                    Group.name.ilike(f"%{q}%"),
+                    Template.name.ilike(f"%{q}%"),
+                    Tag.name.ilike(f"%{q}%"),
+                 ))
+                 .distinct()
+                 .order_by(Host.hostname.asc())
+                 .all())
+    return render_template("hosts_search.html", q=q, hosts=hosts)
+
+
+
+@app.route("/alerts")
+@login_required
+def alerts():
+    alerts_q = Alert.query.order_by(Alert.created_at.desc())
+    alerts = alerts_q.all()
+
+    # Seed auto si vide (désactivable via SEED_FAKE_ALERTS=0)
+    if not alerts and os.getenv("SEED_FAKE_ALERTS", "1") == "1":
+        seed_fake_alerts()
+        alerts = alerts_q.all()
+
+    return render_template("alerts.html", alerts=alerts)
+
 
 @app.route("/healthz")
 def healthz():

@@ -14,23 +14,62 @@
   <body>
     <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
       <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('admin') }}">Supervision</a>
-        <div class="d-flex ms-auto">
-            <!-- Dans la navbar, là où tu as déjà le bouton Créer un host -->
+        <a class="navbar-brand" href="{{ url_for('hosts_list') if current_user else url_for('login') }}">
+          Supervision
+        </a>
+    
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+    
+        <div class="collapse navbar-collapse" id="mainNav">
+          {% if current_user %}
+          <!-- Gauche (visible uniquement si connecté) -->
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <!-- Menu Host -->
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                Host
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('hosts_list') }}">Liste des hôtes</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">Recherche</a></li>
+              </ul>
+            </li>
+            <!-- Alertes -->
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('alerts') }}">Alertes</a>
+            </li>
+          </ul>
+          {% else %}
+          <!-- Non connecté : rien à gauche -->
+          <div class="me-auto"></div>
+          {% endif %}
+    
+          <!-- Droite -->
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
             {% if current_user %}
-            <a class="btn btn-primary me-2" href="{{ url_for('host_new') }}">Créer un host</a>
-            {% if current_role == 'admin' %}
-                <a class="btn btn-outline-primary me-2" href="{{ url_for('user_new') }}">Créer un compte</a>
-            {% endif %}
-            <a class="btn btn-outline-secondary" href="{{ url_for('logout') }}">Déconnexion</a>
+              <li class="nav-item me-2">
+                <a class="btn btn-primary" href="{{ url_for('host_new') }}">Créer un host</a>
+              </li>
+              {% if current_role == 'admin' %}
+              <li class="nav-item me-2">
+                <a class="btn btn-outline-primary" href="{{ url_for('user_new') }}">Créer un compte</a>
+              </li>
+              {% endif %}
+              <li class="nav-item">
+                <a class="btn btn-outline-secondary" href="{{ url_for('logout') }}">Déconnexion</a>
+              </li>
             {% else %}
-            <a class="btn btn-primary" href="{{ url_for('login') }}">Connexion</a>
+              <li class="nav-item">
+                <a class="btn btn-primary" href="{{ url_for('login') }}">Connexion</a>
+              </li>
             {% endif %}
+          </ul>
         </div>
       </div>
     </nav>
-
-    <main class="container py-4">
+        <main class="container py-4">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="mb-3">

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+  <h4 class="mb-3">Recherche d’hôtes</h4>
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-12 col-md-6 col-lg-4">
+      <input class="form-control" type="text" name="q" placeholder="hostname, IP, groupe, template, tag"
+             value="{{ q or '' }}">
+    </div>
+    <div class="col-12 col-md-auto">
+      <button class="btn btn-primary" type="submit">Rechercher</button>
+      {% if q %}
+      <a class="btn btn-outline-secondary ms-1" href="{{ url_for('hosts_search') }}">Effacer</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if q and hosts %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>IP:Port</th>
+            <th>Groupe</th>
+            <th>Template</th>
+            <th>Tags</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in hosts %}
+          <tr>
+            <td>{{ h.hostname }}</td>
+            <td>{{ h.ip }}:{{ h.port }}</td>
+            <td>{{ h.group.name if h.group else "-" }}</td>
+            <td>{{ h.template.name if h.template else "-" }}</td>
+            <td>
+              {% if h.tags %}
+                {% for t in h.tags %}
+                  <span class="badge text-bg-secondary me-1">{{ t.name }}</span>
+                {% endfor %}
+              {% else %}-{% endif %}
+            </td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
+              <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">Edit</a>
+              <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
+                    onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% elif q %}
+    <div class="alert alert-warning">Aucun résultat pour « {{ q }} ».</div>
+  {% endif %}
+{% endblock %}

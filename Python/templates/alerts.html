@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Historique des alertes</h4>
+  </div>
+
+  {% if alerts and alerts|length %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Date/Heure (UTC)</th>
+            <th>Host</th>
+            <th>Gravité</th>
+            <th>Message</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+          <tr>
+            <td class="text-nowrap">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>
+              {% if a.host %}
+                <a href="{{ url_for('host_view', host_id=a.host.id) }}">{{ a.host.hostname }}</a>
+                <div class="small text-muted">{{ a.host.ip }}:{{ a.host.port }}</div>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>
+              {% if a.severity == 'critical' %}
+                <span class="badge text-bg-danger">critical</span>
+              {% elif a.severity == 'warning' %}
+                <span class="badge text-bg-warning text-dark">warning</span>
+              {% else %}
+                <span class="badge text-bg-secondary">info</span>
+              {% endif %}
+            </td>
+            <td>{{ a.message }}</td>
+            <td class="text-end">
+              {% if a.host %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('host_view', host_id=a.host.id) }}">Voir l’hôte</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">
+      Aucune alerte pour le moment. (Des alertes de test seront générées automatiquement en dev.)
+    </div>
+  {% endif %}
+{% endblock %}
