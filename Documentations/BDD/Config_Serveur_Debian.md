@@ -10,4 +10,6 @@ Cette documentation décrit l'environnement de travail mis en place pour la gest
 - **Processeur** : 4 cœurs
 - **Mémoire vive (RAM)** : 4 Go
 
-
+- **Hostname** : Debian
+- **Adresse IP** : 192.168.141.115
+- **Connexion SSH** : Ok avec le compte debian
