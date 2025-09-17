@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-  <h4 class="mb-3">Créer un host</h4>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Créer un host</h4>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('hosts_import_template') }}">Télécharger le modèle</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('hosts_import') }}">Importer CSV</a>
+    </div>
+  </div>
+
   <form method="post" class="col-12 col-lg-8">
     <div class="row g-3">
       <div class="col-md-6">
@@ -49,6 +56,10 @@
       <div class="col-12">
         <label class="form-label">Tags (séparés par des virgules)</label>
         <input name="tags" class="form-control" placeholder="prod, router, snmpv2" />
+        <div class="form-text">
+          Astuce : pour importer en masse, utilisez <em>Importer CSV</em> (colonnes :
+          <code>hostname, description, group, ip, port, template, tags</code>).
+        </div>
       </div>
     </div>
 

@@ -1,15 +1,22 @@
-# app.py
 import os
+import csv
+import re
 import ipaddress
 import hashlib
-from functools import wraps
 import random
+from io import TextIOWrapper
 from datetime import datetime, timedelta
+from functools import wraps
+from typing import List, Optional
 
-from flask import Flask, render_template, redirect, url_for, request, session, flash, g, jsonify, abort
+# --- Flask / SQLAlchemy / Security ---
+from flask import (
+    Flask, Response, render_template, redirect, url_for,
+    request, session, flash, g, jsonify, abort
+)
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import or_
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 # -----------------------------------------------------------------------------
@@ -131,6 +138,33 @@ def verify_password(stored_hash: str, password_plain: str) -> bool:
         pass
     h = hashlib.sha256(password_plain.encode("utf-8")).hexdigest().upper()
     return h == stored_hash
+
+def _split_tags(raw: str) -> List[str]:
+    """Sépare prod,router|snmpv2;edge -> ['prod','router','snmpv2','edge']"""
+    if not raw:
+        return []
+    parts = re.split(r"[,\|;]", raw)
+    return [p.strip() for p in parts if p and p.strip()]
+
+def _ensure_group(name: str) -> Optional[Group]:
+    if not name:
+        return None
+    grp = Group.query.filter_by(name=name).first()
+    if not grp:
+        grp = Group(name=name)
+        db.session.add(grp)
+        db.session.flush()
+    return grp
+
+def _ensure_template(name: str) -> Optional[Template]:
+    if not name:
+        return None
+    tpl = Template.query.filter_by(name=name).first()
+    if not tpl:
+        tpl = Template(name=name)
+        db.session.add(tpl)
+        db.session.flush()
+    return tpl
 
 def seed_fake_alerts(n=12):
     """Génère des fausses alertes si la table est vide (dev)."""
@@ -438,6 +472,126 @@ def template_new():
         flash(f"Template « {name} » créé.", "success")
         return redirect(url_for("host_new"))
     return render_template("template_new.html")
+
+@app.get("/hosts/import/template")
+@login_required
+def hosts_import_template():
+    """Télécharge un modèle CSV."""
+    lines = [
+        ["hostname", "description", "group", "ip", "port", "template", "tags"],
+        ["sw-core-1", "Switch cœur", "Network", "192.168.10.10", "161", "Default", "prod|layer2"],
+        ["srv-monitor", "Serveur Monitor", "Servers", "192.168.20.15", "161", "Linux", "prod|snmpv2"],
+    ]
+    def _gen():
+        out = []
+        for row in lines:
+            out.append(",".join(row))
+        return "\n".join(out) + "\n"
+
+    return Response(_gen(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=hosts_template.csv"})
+
+@app.route("/hosts/import", methods=["GET", "POST"])
+@login_required
+def hosts_import():
+    report = None
+    if request.method == "POST":
+        f = request.files.get("file")
+        if not f or f.filename == "":
+            flash("Aucun fichier sélectionné.", "warning")
+            return render_template("hosts_import.html", report=None)
+
+        if not f.filename.lower().endswith(".csv"):
+            flash("Format invalide : seul le .csv est accepté.", "danger")
+            return render_template("hosts_import.html", report=None)
+
+        # Lecture UTF-8 (gère BOM via utf-8-sig)
+        f.stream.seek(0)
+        wrapper = TextIOWrapper(f.stream, encoding="utf-8-sig", newline="")
+        reader = csv.DictReader(wrapper)
+
+        expected = ["hostname", "description", "group", "ip", "port", "template", "tags"]
+        missing_cols = [c for c in ["hostname", "ip"] if c not in reader.fieldnames]
+        if missing_cols:
+            flash(f"Colonnes obligatoires manquantes: {', '.join(missing_cols)}.", "danger")
+            return render_template("hosts_import.html", report=None)
+
+        created, skipped, errors = 0, 0, []
+        seen_hostnames = set()
+
+        try:
+            for lineno, row in enumerate(reader, start=2):  # ligne 1 = header
+                hostname = (row.get("hostname") or "").strip()
+                description = (row.get("description") or "").strip()
+                group_name = (row.get("group") or "").strip()
+                ip = (row.get("ip") or "").strip()
+                port_raw = (row.get("port") or "161").strip()
+                template_name = (row.get("template") or "").strip()
+                tags_raw = (row.get("tags") or "").strip()
+
+                # validations
+                if not hostname:
+                    errors.append(f"L{lineno}: hostname manquant.")
+                    skipped += 1
+                    continue
+                if hostname in seen_hostnames:
+                    errors.append(f"L{lineno}: hostname dupliqué dans le CSV ({hostname}).")
+                    skipped += 1
+                    continue
+                seen_hostnames.add(hostname)
+
+                if Host.query.filter_by(hostname=hostname).first():
+                    errors.append(f"L{lineno}: hostname déjà présent en BDD ({hostname}), ignoré.")
+                    skipped += 1
+                    continue
+
+                try:
+                    ipaddress.ip_address(ip)
+                except ValueError:
+                    errors.append(f"L{lineno}: IP invalide ({ip}).")
+                    skipped += 1
+                    continue
+
+                try:
+                    port = int(port_raw)
+                    if port < 1 or port > 65535:
+                        raise ValueError()
+                except ValueError:
+                    errors.append(f"L{lineno}: port invalide ({port_raw}).")
+                    skipped += 1
+                    continue
+
+                grp = _ensure_group(group_name)
+                tpl = _ensure_template(template_name)
+
+                host = Host(
+                    hostname=hostname,
+                    description=description,
+                    ip=ip,
+                    port=port,
+                    group_id=grp.id if grp else None,
+                    template_id=tpl.id if tpl else None,
+                )
+
+                # tags
+                for tname in _split_tags(tags_raw):
+                    tag = Tag.query.filter_by(name=tname).first()
+                    if not tag:
+                        tag = Tag(name=tname)
+                    host.tags.append(tag)
+
+                db.session.add(host)
+                created += 1
+
+            db.session.commit()
+            report = {"created": created, "skipped": skipped, "errors": errors, "total": created + skipped}
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Erreur pendant l'import: {e}", "danger")
+            report = None
+
+    return render_template("hosts_import.html", report=report)
 
 # ---------- Hosts ----------
 @app.route("/hosts/new", methods=["GET", "POST"])

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Importer des hôtes (CSV)</h4>
+    <div>
+      <a class="btn btn-outline-secondary" href="{{ url_for('hosts_import_template') }}">Télécharger le modèle</a>
+      <a class="btn btn-outline-primary ms-2" href="{{ url_for('host_new') }}">Créer un host</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-8">
+            <label class="form-label">Fichier CSV</label>
+            <input type="file" name="file" accept=".csv" class="form-control" required />
+            <div class="form-text">
+              Colonnes attendues : <code>hostname, description, group, ip, port, template, tags</code>.
+              Pour plusieurs tags, sépare par <code>,</code> ou <code>|</code> ou <code>;</code>.
+            </div>
+          </div>
+          <div class="col-12 col-md-4">
+            <button class="btn btn-primary w-100" type="submit">Importer</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if report %}
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="mb-3">Résultat de l’import</h6>
+        <p class="mb-2">
+          Créés : <strong>{{ report.created }}</strong> —
+          Ignorés : <strong>{{ report.skipped }}</strong> —
+          Total lus : <strong>{{ report.total }}</strong>
+        </p>
+        {% if report.errors and report.errors|length %}
+          <div class="alert alert-warning">
+            <div class="fw-semibold mb-1">Détails :</div>
+            <ul class="mb-0">
+              {% for e in report.errors %}
+                <li>{{ e }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <div class="alert alert-success mb-0">Import terminé sans erreurs.</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
