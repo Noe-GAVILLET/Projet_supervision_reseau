@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Détails de l’équipement</h4>
+    <div>
+      <a class="btn btn-outline-secondary me-2" href="{{ url_for('host_edit', host_id=host.id) }}">Edit</a>
+      <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title mb-3">{{ host.hostname }}</h5>
+          <dl class="row">
+            <dt class="col-sm-4">IP / Port</dt>
+            <dd class="col-sm-8">{{ host.ip }} : {{ host.port }}</dd>
+
+            <dt class="col-sm-4">Description</dt>
+            <dd class="col-sm-8">{{ host.description or "-" }}</dd>
+
+            <dt class="col-sm-4">Groupe</dt>
+            <dd class="col-sm-8">{{ host.group.name if host.group else "-" }}</dd>
+
+            <dt class="col-sm-4">Template</dt>
+            <dd class="col-sm-8">{{ host.template.name if host.template else "-" }}</dd>
+
+            <dt class="col-sm-4">Tags</dt>
+            <dd class="col-sm-8">
+              {% if host.tags %}
+                {% for t in host.tags %}
+                  <span class="badge text-bg-secondary me-1">{{ t.name }}</span>
+                {% endfor %}
+              {% else %}-{% endif %}
+            </dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder supervision (à brancher plus tard) -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Supervision</h5>
+          <p class="text-muted mb-2">Ici, on affichera :</p>
+          <ul class="mb-0">
+            <li>Statut d’accessibilité (ping/SNMP)</li>
+            <li>Dernières mesures (CPU, Temp, etc.)</li>
+            <li>Alertes récentes</li>
+            <li>Graphiques (Chart.js/Plotly)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

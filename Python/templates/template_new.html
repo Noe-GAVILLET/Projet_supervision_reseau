@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <h4 class="mb-3">Créer un template</h4>
+  <form method="post" class="col-12 col-md-8">
+    <div class="mb-3">
+      <label class="form-label">Nom du template *</label>
+      <input name="name" class="form-control" required />
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Description</label>
+      <textarea name="description" class="form-control" rows="4"
+        placeholder="Ex: SNMPv2, OIDs CPU/Temp, fréquence 30s…"></textarea>
+    </div>
+    <button class="btn btn-primary" type="submit">Créer</button>
+    <a class="btn btn-link" href="{{ url_for('host_new') }}">Retour</a>
+  </form>
+{% endblock %}

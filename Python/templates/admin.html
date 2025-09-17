@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">Espace administrateur</h3>
+  </div>
+
+  {% if hosts %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>IP:Port</th>
+            <th>Groupe</th>
+            <th>Template</th>
+            <th>Tags</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in hosts %}
+          <tr>
+            <td>{{ h.hostname }}</td>
+            <td>{{ h.ip }}:{{ h.port }}</td>
+            <td>{{ h.group.name if h.group else "-" }}</td>
+            <td>{{ h.template.name if h.template else "-" }}</td>
+            <td>
+              {% if h.tags %}
+                {% for t in h.tags %}
+                  <span class="badge text-bg-secondary me-1">{{ t.name }}</span>
+                {% endfor %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
+              <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">Edit</a>
+              <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
+                    onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">Aucun host pour le moment. Cliquez sur “Créer un host”.</div>
+  {% endif %}
+{% endblock %}

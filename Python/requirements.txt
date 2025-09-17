@@ -1,0 +1,18 @@
+# Web
+Flask>=3.0,<4
+Flask-Cors>=4.0,<5
+Jinja2>=3.1,<4
+
+# ORM / DB
+SQLAlchemy>=2.0,<3
+Flask-SQLAlchemy>=3.1,<4
+Flask-Migrate>=4.0,<5
+PyMySQL>=1.1,<2
+
+# Tâches planifiées
+APScheduler>=3.10,<4
+tzdata>=2024.1,<2026
+
+# SNMP
+pysnmp>=4.4,<5
+
