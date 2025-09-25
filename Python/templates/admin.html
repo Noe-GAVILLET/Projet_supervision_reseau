@@ -12,7 +12,7 @@
             <th>Hostname</th>
             <th>IP:Port</th>
             <th>Groupe</th>
-            <th>Template</th>
+            <th>Catégories SNMP</th>
             <th>Tags</th>
             <th class="text-end">Actions</th>
           </tr>
@@ -23,7 +23,15 @@
             <td>{{ h.hostname }}</td>
             <td>{{ h.ip }}:{{ h.port }}</td>
             <td>{{ h.group.name if h.group else "-" }}</td>
-            <td>{{ h.template.name if h.template else "-" }}</td>
+            <td>
+              {% if h.snmp_categories %}
+                {% for c in h.snmp_categories %}
+                  <span class="badge text-bg-info me-1">{{ c }}</span>
+                {% endfor %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
             <td>
               {% if h.tags %}
                 {% for t in h.tags %}

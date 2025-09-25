@@ -127,4 +127,3 @@ def get_storage_metrics(ip, community="public", port=161):
         }
 
     return storage
-        
