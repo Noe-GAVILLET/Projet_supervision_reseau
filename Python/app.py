@@ -330,16 +330,20 @@ def host_edit(host_id: int):
         hostname = request.form.get("hostname", "").strip()
         description = request.form.get("description", "").strip()
         group_id = request.form.get("group_id") or None
-        template_id = request.form.get("template_id") or None
+        template_id = request.form.get("template_id") or None  # ok si tu gardes le champ
         ip = request.form.get("ip", "").strip()
         port = request.form.get("port", "161").strip()
         tags_raw = request.form.get("tags", "").strip()
 
-        # SNMP v2c — champs optionnels dans le formulaire
+        # SNMP v2c
         snmp_community = request.form.get("snmp_community", "public").strip()
-        cats_raw = request.form.get("snmp_categories", "system").strip()
-        snmp_categories = [c.strip() for c in re.split(r"[,\|;]", cats_raw) if c.strip()]
+        raw_categories = request.form.getlist("snmp_categories[]")  # <<< IMPORTANT
+        allowed = {"system", "cpu", "storage", "interfaces"}
+        snmp_categories = [c for c in raw_categories if c in allowed]
+        if not snmp_categories:
+            snmp_categories = ["system"]
 
+        # Validations
         if not hostname:
             flash("Hostname obligatoire.", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
@@ -363,7 +367,7 @@ def host_edit(host_id: int):
             flash("Port invalide (1-65535).", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
 
-        # Appliquer les modifications
+        # Appliquer les modifications (affecter de NOUVELLES valeurs)
         host.hostname = hostname
         host.description = description
         host.ip = ip
@@ -371,7 +375,7 @@ def host_edit(host_id: int):
         host.group_id = int(group_id) if group_id else None
         host.template_id = int(template_id) if template_id else None
         host.snmp_community = snmp_community or "public"
-        host.snmp_categories = snmp_categories or ["system"]
+        host.snmp_categories = list(snmp_categories)  # <<< nouvelle liste pour bien “dirty” la colonne JSON
 
         # Tags (remplacement complet)
         new_names = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -390,6 +394,7 @@ def host_edit(host_id: int):
     # Pré-remplir le champ tags
     tags_value = ", ".join(t.name for t in host.tags) if host.tags else ""
     return render_template("host_edit.html", host=host, groups=groups, templates=templates, tags_value=tags_value)
+
 
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])

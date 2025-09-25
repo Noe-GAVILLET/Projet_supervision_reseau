@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-  <h4>Modifier le host : {{ host.hostname }}</h4>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Modifier un host</h4>
+    <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
+  </div>
 
   <form method="post" class="col-12 col-lg-8">
     <div class="row g-3">
@@ -23,49 +26,50 @@
       </div>
 
       <div class="col-md-6">
-        <label class="form-label">Communauté SNMP *</label>
-        <input name="snmp_community" class="form-control" value="{{ host.snmp_community or 'public' }}" required />
-      </div>
-
-      <div class="col-md-6">
         <label class="form-label">Groupe</label>
         <div class="d-flex gap-2">
           <select name="group_id" class="form-select">
             <option value="">— Aucun —</option>
             {% for g in groups %}
-              <option value="{{ g.id }}" {% if host.group and host.group.id == g.id %}selected{% endif %}>{{ g.name }}</option>
+              <option value="{{ g.id }}" {% if host.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
             {% endfor %}
           </select>
           <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
         </div>
       </div>
 
-      <!-- Catégories SNMP (checkboxes) -->
+      <!-- Communauté SNMP -->
+      <div class="col-md-6">
+        <label class="form-label">Communauté SNMP *</label>
+        <input name="snmp_community" class="form-control" value="{{ host.snmp_community or 'public' }}" required />
+      </div>
+
+      <!-- Catégories SNMP -->
       <div class="col-12">
-        <label class="form-label">Catégories SNMP *</label>
-        <div class="d-flex flex-wrap gap-4">
+        <label class="form-label">Catégories SNMP</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% set categories = ["system", "cpu", "storage", "interfaces"] %}
           {% set selected = host.snmp_categories or [] %}
-          {% for cat in ["system", "cpu", "storage", "interfaces"] %}
+          {% for cat in categories %}
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="snmp_categories"
-                     value="{{ cat }}" id="chk_{{ cat }}"
+              <input class="form-check-input" type="checkbox" name="snmp_categories[]" value="{{ cat }}" id="cat-{{ cat }}"
                      {% if cat in selected %}checked{% endif %}>
-              <label class="form-check-label" for="chk_{{ cat }}">
-                {{ cat|capitalize }}
-              </label>
+              <label class="form-check-label" for="cat-{{ cat }}">{{ cat|capitalize }}</label>
             </div>
           {% endfor %}
         </div>
+        <div class="form-text">Cochez une ou plusieurs catégories à superviser.</div>
       </div>
 
+      <!-- Tags -->
       <div class="col-12">
         <label class="form-label">Tags (séparés par des virgules)</label>
-        <input name="tags" class="form-control" value="{{ tags_value }}" />
+        <input name="tags" class="form-control" value="{{ tags_value }}" placeholder="prod, router, snmpv2" />
       </div>
     </div>
 
     <div class="mt-4">
-      <button class="btn btn-primary" type="submit">Enregistrer</button>
+      <button class="btn btn-success" type="submit">Enregistrer</button>
       <a class="btn btn-link" href="{{ url_for('admin') }}">Annuler</a>
     </div>
   </form>
