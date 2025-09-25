@@ -8,6 +8,7 @@ from io import TextIOWrapper
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import List, Optional
+from snmp_utils import snmp_get, snmp_walk, get_metrics
 
 # --- Flask / SQLAlchemy / Security ---
 from flask import (
@@ -17,7 +18,6 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
-
 
 # -----------------------------------------------------------------------------
 # Config Flask + DB (adaptée à ton serveur MySQL Docker: 192.168.141.115:3002)
@@ -82,6 +82,12 @@ class Host(db.Model):
     description = db.Column(db.String(255))
     ip = db.Column(db.String(45), nullable=False)
     port = db.Column(db.Integer, nullable=False, default=161)
+
+    # --- SNMP v2c uniquement ---
+    snmp_community = db.Column(db.String(128), nullable=True, default="public")
+    # JSON: ["system","cpu","storage","interfaces"]
+    snmp_categories = db.Column(db.JSON, nullable=True)
+
     group_id = db.Column(db.Integer, db.ForeignKey("groups.id"))
     template_id = db.Column(db.Integer, db.ForeignKey("templates.id"))
 
@@ -101,8 +107,8 @@ class Alert(db.Model):
     host = db.relationship("Host", backref=db.backref("alerts", lazy=True))
 
 # Optionnel : ne pas forcer la création si le schéma existe déjà en BDD
-#with app.app_context():
-#    db.create_all()
+# with app.app_context():
+#     db.create_all()
 
 # -----------------------------------------------------------------------------
 # Auth via BDD
@@ -128,8 +134,8 @@ def admin_required(view):
 
 def verify_password(stored_hash: str, password_plain: str) -> bool:
     """
-    1) Tente d'abord la vérification Werk­zeug (gère scrypt, pbkdf2, etc.).
-    2) Fallback : compare à un SHA256 hex uppercase (cas de ton admin SQL d'origine).
+    1) Tente d'abord la vérification Werkzeug.
+    2) Fallback : SHA256 hex uppercase (cas de l'admin SQL d'origine).
     """
     try:
         if check_password_hash(stored_hash, password_plain):
@@ -185,7 +191,7 @@ def seed_fake_alerts(n=12):
     fake = []
     for _ in range(n):
         h = random.choice(hosts)
-        sev = random.choices(severities, weights=[2, 3, 1])[0]  # plus de warnings
+        sev = random.choices(severities, weights=[2, 3, 1])[0]
         msg = random.choice(messages)
         ts = now - timedelta(minutes=random.randint(1, 24 * 60))
         fake.append(Alert(host_id=h.id, severity=sev, message=f"{h.hostname}: {msg}", created_at=ts))
@@ -259,21 +265,17 @@ def hosts_search():
                  .all())
     return render_template("hosts_search.html", q=q, hosts=hosts)
 
-
-
 @app.route("/alerts")
 @login_required
 def alerts():
     alerts_q = Alert.query.order_by(Alert.created_at.desc())
     alerts = alerts_q.all()
 
-    # Seed auto si vide (désactivable via SEED_FAKE_ALERTS=0)
     if not alerts and os.getenv("SEED_FAKE_ALERTS", "1") == "1":
         seed_fake_alerts()
         alerts = alerts_q.all()
 
     return render_template("alerts.html", alerts=alerts)
-
 
 @app.route("/healthz")
 def healthz():
@@ -281,7 +283,7 @@ def healthz():
     try:
         db.session.execute(db.text("SELECT 1"))
         db_ok = True
-    except Exception as e:
+    except Exception:
         db_ok = False
     return jsonify(
         status="ok" if db_ok else "degraded",
@@ -298,7 +300,21 @@ def host_view(host_id: int):
     host = db.session.get(Host, host_id)
     if not host:
         abort(404)
-    return render_template("host_detail.html", host=host)
+
+    metrics = {}
+    if host.snmp_categories:
+        for category in host.snmp_categories:
+            try:
+                metrics[category] = get_metrics(
+                    ip=host.ip,
+                    community=host.snmp_community,
+                    port=host.port,
+                    category=category
+                )
+            except Exception as e:
+                metrics[category] = {"error": str(e)}
+
+    return render_template("host_detail.html", host=host, metrics=metrics)
 
 @app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -319,11 +335,15 @@ def host_edit(host_id: int):
         port = request.form.get("port", "161").strip()
         tags_raw = request.form.get("tags", "").strip()
 
+        # SNMP v2c — champs optionnels dans le formulaire
+        snmp_community = request.form.get("snmp_community", "public").strip()
+        cats_raw = request.form.get("snmp_categories", "system").strip()
+        snmp_categories = [c.strip() for c in re.split(r"[,\|;]", cats_raw) if c.strip()]
+
         if not hostname:
             flash("Hostname obligatoire.", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
 
-        # Unicité hostname (autoriser le même pour ce host)
         exists = Host.query.filter(Host.hostname == hostname, Host.id != host.id).first()
         if exists:
             flash("Un autre host utilise déjà ce hostname.", "warning")
@@ -350,6 +370,8 @@ def host_edit(host_id: int):
         host.port = port
         host.group_id = int(group_id) if group_id else None
         host.template_id = int(template_id) if template_id else None
+        host.snmp_community = snmp_community or "public"
+        host.snmp_categories = snmp_categories or ["system"]
 
         # Tags (remplacement complet)
         new_names = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -359,7 +381,7 @@ def host_edit(host_id: int):
             if not tag:
                 tag = Tag(name=name)
             new_tags.append(tag)
-        host.tags = new_tags  # remplace l’ensemble
+        host.tags = new_tags
 
         db.session.commit()
         flash(f"Host « {host.hostname} » mis à jour.", "success")
@@ -368,6 +390,7 @@ def host_edit(host_id: int):
     # Pré-remplir le champ tags
     tags_value = ", ".join(t.name for t in host.tags) if host.tags else ""
     return render_template("host_edit.html", host=host, groups=groups, templates=templates, tags_value=tags_value)
+
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
 @login_required
@@ -380,8 +403,6 @@ def host_delete(host_id: int):
     db.session.commit()
     flash(f"Host « {hostname} » supprimé.", "success")
     return redirect(url_for("admin"))
-
-
 
 @app.route("/admin")
 @login_required
@@ -417,7 +438,6 @@ def user_new():
             flash("Cet email est déjà utilisé.", "warning")
             return render_template("user_new.html")
 
-        # Hash fort (pbkdf2 de Werkzeug)
         pwd_hash = generate_password_hash(password)
 
         user = User(
@@ -478,9 +498,10 @@ def template_new():
 def hosts_import_template():
     """Télécharge un modèle CSV."""
     lines = [
-        ["hostname", "description", "group", "ip", "port", "template", "tags"],
-        ["sw-core-1", "Switch cœur", "Network", "192.168.10.10", "161", "Default", "prod|layer2"],
-        ["srv-monitor", "Serveur Monitor", "Servers", "192.168.20.15", "161", "Linux", "prod|snmpv2"],
+        # Ajoute les nouvelles colonnes en commentaire d’exemple (non obligatoires)
+        ["hostname", "description", "group", "ip", "port", "template", "tags", "snmp_community", "snmp_categories"],
+        ["sw-core-1", "Switch cœur", "Network", "192.168.10.10", "161", "Default", "prod|layer2", "public", "system|interfaces"],
+        ["srv-monitor", "Serveur Monitor", "Servers", "192.168.20.15", "161", "Linux", "prod|snmpv2", "public", "system|cpu|storage|interfaces"],
     ]
     def _gen():
         out = []
@@ -510,7 +531,6 @@ def hosts_import():
         wrapper = TextIOWrapper(f.stream, encoding="utf-8-sig", newline="")
         reader = csv.DictReader(wrapper)
 
-        expected = ["hostname", "description", "group", "ip", "port", "template", "tags"]
         missing_cols = [c for c in ["hostname", "ip"] if c not in reader.fieldnames]
         if missing_cols:
             flash(f"Colonnes obligatoires manquantes: {', '.join(missing_cols)}.", "danger")
@@ -528,6 +548,11 @@ def hosts_import():
                 port_raw = (row.get("port") or "161").strip()
                 template_name = (row.get("template") or "").strip()
                 tags_raw = (row.get("tags") or "").strip()
+
+                # SNMP v2c (optionnels)
+                snmp_community = (row.get("snmp_community") or "public").strip()
+                cats_raw = (row.get("snmp_categories") or "system").strip()
+                snmp_categories = [c.strip() for c in re.split(r"[,\|;]", cats_raw) if c.strip()]
 
                 # validations
                 if not hostname:
@@ -573,6 +598,10 @@ def hosts_import():
                     template_id=tpl.id if tpl else None,
                 )
 
+                # SNMP v2c
+                host.snmp_community = snmp_community or "public"
+                host.snmp_categories = snmp_categories or ["system"]
+
                 # tags
                 for tname in _split_tags(tags_raw):
                     tag = Tag.query.filter_by(name=tname).first()
@@ -604,10 +633,13 @@ def host_new():
         hostname = request.form.get("hostname", "").strip()
         description = request.form.get("description", "").strip()
         group_id = request.form.get("group_id") or None
-        template_id = request.form.get("template_id") or None
         ip = request.form.get("ip", "").strip()
         port = request.form.get("port", "161").strip()
         tags_raw = request.form.get("tags", "").strip()
+
+        # SNMP v2c (form)
+        snmp_community = request.form.get("snmp_community", "public").strip()
+        snmp_categories = request.form.getlist("snmp_categories")  # récupère toutes les cases cochées
 
         # Validations simples
         if not hostname:
@@ -637,8 +669,11 @@ def host_new():
             ip=ip,
             port=port,
             group_id=int(group_id) if group_id else None,
-            template_id=int(template_id) if template_id else None,
         )
+
+        # SNMP v2c
+        host.snmp_community = snmp_community or "public"
+        host.snmp_categories = snmp_categories or ["system"]
 
         # Tags (séparés par des virgules)
         tag_names = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -654,6 +689,20 @@ def host_new():
         return redirect(url_for("admin"))
 
     return render_template("host_new.html", groups=groups, templates=templates)
+
+
+
+# -----------------------------------------------------------------------------
+# Enregistrement des Blueprints API (SNMP poll dans api_poll.py)
+# -----------------------------------------------------------------------------
+# IMPORTANT : api_poll.py NE DOIT PAS importer 'app' pour éviter les imports circulaires.
+# Il doit uniquement utiliser 'from flask import Blueprint' et accéder aux modèles via import local propre.
+try:
+    from api_poll import bp as api_poll_bp
+    app.register_blueprint(api_poll_bp)
+except Exception as e:
+    # Evite de casser l'app si le blueprint n'est pas encore créé
+    app.logger.warning(f"api_poll blueprint non chargé: {e}")
 
 # -----------------------------------------------------------------------------
 # Lancement

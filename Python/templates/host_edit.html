@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-  <h4 class="mb-3">Modifier l’équipement</h4>
+  <h4>Modifier le host : {{ host.hostname }}</h4>
+
   <form method="post" class="col-12 col-lg-8">
     <div class="row g-3">
       <div class="col-md-6">
@@ -11,6 +12,7 @@
         <label class="form-label">Adresse IP *</label>
         <input name="ip" class="form-control" value="{{ host.ip }}" required />
       </div>
+
       <div class="col-md-4">
         <label class="form-label">Port</label>
         <input name="port" class="form-control" value="{{ host.port }}" />
@@ -21,40 +23,50 @@
       </div>
 
       <div class="col-md-6">
+        <label class="form-label">Communauté SNMP *</label>
+        <input name="snmp_community" class="form-control" value="{{ host.snmp_community or 'public' }}" required />
+      </div>
+
+      <div class="col-md-6">
         <label class="form-label">Groupe</label>
         <div class="d-flex gap-2">
           <select name="group_id" class="form-select">
             <option value="">— Aucun —</option>
             {% for g in groups %}
-              <option value="{{ g.id }}" {% if host.group and g.id == host.group.id %}selected{% endif %}>{{ g.name }}</option>
+              <option value="{{ g.id }}" {% if host.group and host.group.id == g.id %}selected{% endif %}>{{ g.name }}</option>
             {% endfor %}
           </select>
           <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
         </div>
       </div>
 
-      <div class="col-md-6">
-        <label class="form-label">Template</label>
-        <div class="d-flex gap-2">
-          <select name="template_id" class="form-select">
-            <option value="">— Aucun —</option>
-            {% for t in templates %}
-              <option value="{{ t.id }}" {% if host.template and t.id == host.template.id %}selected{% endif %}>{{ t.name }}</option>
-            {% endfor %}
-          </select>
-          <a class="btn btn-outline-secondary" href="{{ url_for('template_new') }}">+ Nouveau</a>
+      <!-- Catégories SNMP (checkboxes) -->
+      <div class="col-12">
+        <label class="form-label">Catégories SNMP *</label>
+        <div class="d-flex flex-wrap gap-4">
+          {% set selected = host.snmp_categories or [] %}
+          {% for cat in ["system", "cpu", "storage", "interfaces"] %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="snmp_categories"
+                     value="{{ cat }}" id="chk_{{ cat }}"
+                     {% if cat in selected %}checked{% endif %}>
+              <label class="form-check-label" for="chk_{{ cat }}">
+                {{ cat|capitalize }}
+              </label>
+            </div>
+          {% endfor %}
         </div>
       </div>
 
       <div class="col-12">
         <label class="form-label">Tags (séparés par des virgules)</label>
-        <input name="tags" class="form-control" value="{{ tags_value or '' }}" placeholder="prod, router, snmpv2" />
+        <input name="tags" class="form-control" value="{{ tags_value }}" />
       </div>
     </div>
 
-    <div class="mt-4 d-flex gap-2">
+    <div class="mt-4">
       <button class="btn btn-primary" type="submit">Enregistrer</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('host_view', host_id=host.id) }}">Annuler</a>
+      <a class="btn btn-link" href="{{ url_for('admin') }}">Annuler</a>
     </div>
   </form>
 {% endblock %}
