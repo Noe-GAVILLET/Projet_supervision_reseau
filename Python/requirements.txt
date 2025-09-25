@@ -14,5 +14,6 @@ APScheduler>=3.10,<4
 tzdata>=2024.1,<2026
 
 # SNMP
-pysnmp>=4.4,<5
-
+pysnmp==4.4.12
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
