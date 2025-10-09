@@ -4,6 +4,13 @@
     <h3 class="mb-0">Espace administrateur</h3>
   </div>
 
+  {# 🔴 Popup si un ou plusieurs équipements sont down #}
+  {% if down_hosts %}
+  <div class="alert alert-danger text-center fs-5 fw-bold">
+    ⚠️ Équipement(s) injoignable(s) : {{ down_hosts|join(', ') }}
+  </div>
+  {% endif %}
+
   {% if hosts %}
     <div class="table-responsive">
       <table class="table align-middle">
@@ -14,6 +21,7 @@
             <th>Groupe</th>
             <th>Catégories SNMP</th>
             <th>Tags</th>
+            <th>État</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -41,8 +49,19 @@
                 -
               {% endif %}
             </td>
+            <td>
+              {% if h.hostname in down_hosts %}
+                <span class="badge bg-danger">Down</span>
+              {% else %}
+                <span class="badge bg-success">Up</span>
+              {% endif %}
+            </td>
             <td class="text-end">
-              <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
+              {% if h.hostname in down_hosts %}
+                <button class="btn btn-sm btn-secondary me-1" disabled>Hôte injoignable</button>
+              {% else %}
+                <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
+              {% endif %}
               <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">Edit</a>
               <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
                     onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
@@ -57,4 +76,9 @@
   {% else %}
     <div class="alert alert-info">Aucun host pour le moment. Cliquez sur “Créer un host”.</div>
   {% endif %}
+
+  <script>
+    // 🔄 Actualisation auto toutes les 10s pour suivre le statut en direct
+    setInterval(() => location.reload(), 10000);
+  </script>
 {% endblock %}

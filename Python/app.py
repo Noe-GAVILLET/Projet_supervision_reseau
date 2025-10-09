@@ -214,7 +214,25 @@ def logout():
 @login_required
 def hosts_list():
     hosts = Host.query.order_by(Host.hostname.asc()).all()
-    return render_template("admin.html", hosts=hosts, title="Liste des hôtes")
+
+    # 🔹 Cherche alertes critiques récentes (< 5 min)
+    recent_criticals = (
+        Alert.query
+        .filter(
+            Alert.severity == "critical",
+            Alert.created_at >= datetime.utcnow() - timedelta(minutes=5)
+        )
+        .all()
+    )
+
+    down_hosts = {a.host.hostname for a in recent_criticals if a.host}
+
+    return render_template(
+        "admin.html",
+        hosts=hosts,
+        title="Liste des hôtes",
+        down_hosts=down_hosts
+    )
 
 @app.route("/hosts/search")
 @login_required
@@ -278,28 +296,44 @@ def healthz():
         user=g.user,
         role=g.role,
     )
-
 @app.route("/hosts/<int:host_id>")
 @login_required
 def host_view(host_id: int):
+    from models_extra import CurrentMetric
+
     host = db.session.get(Host, host_id)
     if not host:
         abort(404)
 
     metrics = {}
-    if host.snmp_categories:
-        for category in host.snmp_categories:
-            try:
+    error = None
+
+    try:
+        # 🔹 Tentative d’interrogation SNMP live
+        if host.snmp_categories:
+            for category in host.snmp_categories:
                 metrics[category] = get_metrics(
                     ip=host.ip,
                     community=host.snmp_community,
                     port=host.port,
                     category=category
                 )
-            except Exception as e:
-                metrics[category] = {"error": str(e)}
+    except Exception as e:
+        error = f"Hôte injoignable ou timeout SNMP : {e}"
 
-    return render_template("host_detail.html", host=host, metrics=metrics)
+    # 🔹 Si le live échoue → on récupère depuis la BDD
+    if not metrics:
+        metrics = {}
+        rows = CurrentMetric.query.filter_by(host_id=host.id).all()
+        if rows:
+            for r in rows:
+                cat = r.meta if isinstance(r.meta, str) else (r.meta or "autre")
+                metrics.setdefault(cat, {})[r.oid] = r.value
+        else:
+            error = error or "Aucune métrique disponible (host jamais contacté)."
+
+    return render_template("host_detail.html", host=host, metrics=metrics, error=error)
+
 
 @app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -701,6 +735,43 @@ from poller import start_scheduler
 
 with app.app_context():
     start_scheduler(app, db, Host, Alert)
+
+# -----------------------------------------------------------------------------
+# Contexte global pour la navbar
+# -----------------------------------------------------------------------------
+from flask import g
+
+from models_extra import CurrentMetric
+
+@app.context_processor
+def inject_global_state():
+    """Injecte dans tous les templates la liste des hosts down."""
+    try:
+        down_hosts = (
+            CurrentMetric.query
+            .filter(CurrentMetric.meta == "interfaces", CurrentMetric.value == "Down")
+            .with_entities(CurrentMetric.host_id)
+            .distinct()
+            .all()
+        )
+        down_ids = [h.host_id for h in down_hosts]
+        hosts_down = Host.query.filter(Host.id.in_(down_ids)).all()
+    except Exception:
+        hosts_down = []
+
+    return dict(hosts_down=hosts_down)
+
+# -------------------------------------------------------
+# 🔄 Injection du cache d'état des hôtes dans les templates
+# -------------------------------------------------------
+@app.context_processor
+def inject_host_status_cache():
+    try:
+        from poller import HOST_STATUS_CACHE
+        return {'HOST_STATUS_CACHE': HOST_STATUS_CACHE}
+    except Exception:
+        # si poller pas encore initialisé
+        return {'HOST_STATUS_CACHE': {}}
 
 
 # -----------------------------------------------------------------------------

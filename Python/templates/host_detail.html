@@ -1,4 +1,10 @@
 {% extends "base.html" %}
+{% if error %}
+<div class="alert alert-warning">
+  {{ error }}
+</div>
+{% endif %}
+
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-4">
   <h4 class="mb-0">Détails du host : {{ host.hostname }}</h4>
