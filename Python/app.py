@@ -15,12 +15,12 @@ from flask import (
     Flask, Response, render_template, redirect, url_for,
     request, session, flash, g, jsonify, abort
 )
-from flask_sqlalchemy import SQLAlchemy
+from database import db
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# -----------------------------------------------------------------------------
-# Config Flask + DB (adaptée à ton serveur MySQL Docker: 192.168.141.115:3002)
+# ----------------------------------------------------------------------------- 
+# Config Flask + DB 
 # -----------------------------------------------------------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
@@ -36,7 +36,8 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
+# ✅ Lier directement db à app (pas de init_app)
+db.init_app(app)
 
 # -----------------------------------------------------------------------------
 # Modèles (alignés sur ton schéma SQL)
@@ -172,32 +173,6 @@ def _ensure_template(name: str) -> Optional[Template]:
         db.session.flush()
     return tpl
 
-def seed_fake_alerts(n=12):
-    """Génère des fausses alertes si la table est vide (dev)."""
-    hosts = Host.query.all()
-    if not hosts:
-        demo = Host(hostname="demo-sw1", ip="192.168.0.10", port=161, description="Host de démonstration")
-        db.session.add(demo)
-        db.session.commit()
-        hosts = [demo]
-
-    severities = ["info", "warning", "critical"]
-    messages = [
-        "CPU usage high", "Temp threshold exceeded", "Interface down",
-        "SNMP timeout", "Disk space low", "Link flapping",
-        "Device unreachable", "Config change detected",
-    ]
-    now = datetime.utcnow()
-    fake = []
-    for _ in range(n):
-        h = random.choice(hosts)
-        sev = random.choices(severities, weights=[2, 3, 1])[0]
-        msg = random.choice(messages)
-        ts = now - timedelta(minutes=random.randint(1, 24 * 60))
-        fake.append(Alert(host_id=h.id, severity=sev, message=f"{h.hostname}: {msg}", created_at=ts))
-    db.session.add_all(fake)
-    db.session.commit()
-
 
 @app.before_request
 def load_user():
@@ -268,14 +243,24 @@ def hosts_search():
 @app.route("/alerts")
 @login_required
 def alerts():
-    alerts_q = Alert.query.order_by(Alert.created_at.desc())
-    alerts = alerts_q.all()
+    severity = request.args.get("severity", "").strip().lower()
+    q = request.args.get("q", "").strip()
 
-    if not alerts and os.getenv("SEED_FAKE_ALERTS", "1") == "1":
-        seed_fake_alerts()
-        alerts = alerts_q.all()
+    alerts_q = Alert.query
 
-    return render_template("alerts.html", alerts=alerts)
+    if severity in ("info", "warning", "critical"):
+        alerts_q = alerts_q.filter(Alert.severity == severity)
+
+    if q:
+        alerts_q = alerts_q.join(Host, isouter=True).filter(
+            (Host.hostname.ilike(f"%{q}%")) |
+            (Host.ip.ilike(f"%{q}%")) |
+            (Alert.message.ilike(f"%{q}%"))
+        )
+
+    alerts = alerts_q.order_by(Alert.created_at.desc()).limit(200).all()
+
+    return render_template("alerts.html", alerts=alerts, severity=severity, q=q)
 
 @app.route("/healthz")
 def healthz():
@@ -708,6 +693,15 @@ try:
 except Exception as e:
     # Evite de casser l'app si le blueprint n'est pas encore créé
     app.logger.warning(f"api_poll blueprint non chargé: {e}")
+
+# ----------------------------------------------------------------------------- 
+# Scheduler SNMP (démarre après les modèles)
+# -----------------------------------------------------------------------------
+from poller import start_scheduler
+
+with app.app_context():
+    start_scheduler(app, db, Host, Alert)
+
 
 # -----------------------------------------------------------------------------
 # Lancement

@@ -1,16 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h4 class="mb-0">Historique des alertes</h4>
+    <h4 class="mb-0">Surveillance en temps réel</h4>
+    <a class="btn btn-outline-primary" href="{{ url_for('admin') }}">← Retour aux hôtes</a>
   </div>
 
   {% if alerts and alerts|length %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <form method="get" class="row g-2 align-items-center">
+          <div class="col-md-3">
+            <label class="form-label mb-0 text-muted small">Filtrer par gravité</label>
+            <select name="severity" class="form-select" onchange="this.form.submit()">
+              <option value="">Toutes</option>
+              <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critique</option>
+              <option value="warning" {% if severity == 'warning' %}selected{% endif %}>Avertissement</option>
+              <option value="info" {% if severity == 'info' %}selected{% endif %}>Info</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label mb-0 text-muted small">Rechercher un host</label>
+            <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ex: router, debian..." />
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="table-responsive">
-      <table class="table align-middle">
-        <thead>
+      <table class="table align-middle table-hover">
+        <thead class="table-light">
           <tr>
-            <th>Date/Heure (UTC)</th>
-            <th>Host</th>
+            <th>Horodatage (UTC)</th>
+            <th>Hôte</th>
             <th>Gravité</th>
             <th>Message</th>
             <th class="text-end">Actions</th>
@@ -18,29 +39,33 @@
         </thead>
         <tbody>
           {% for a in alerts %}
-          <tr>
+          <tr class="{% if a.severity == 'critical' %}table-danger{% elif a.severity == 'warning' %}table-warning{% endif %}">
             <td class="text-nowrap">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
             <td>
               {% if a.host %}
-                <a href="{{ url_for('host_view', host_id=a.host.id) }}">{{ a.host.hostname }}</a>
+                <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="fw-semibold">
+                  {{ a.host.hostname }}
+                </a>
                 <div class="small text-muted">{{ a.host.ip }}:{{ a.host.port }}</div>
               {% else %}
-                -
+                <em class="text-muted">Inconnu</em>
               {% endif %}
             </td>
             <td>
               {% if a.severity == 'critical' %}
-                <span class="badge text-bg-danger">critical</span>
+                <span class="badge bg-danger">Critique</span>
               {% elif a.severity == 'warning' %}
-                <span class="badge text-bg-warning text-dark">warning</span>
+                <span class="badge bg-warning text-dark">Avertissement</span>
               {% else %}
-                <span class="badge text-bg-secondary">info</span>
+                <span class="badge bg-secondary">Info</span>
               {% endif %}
             </td>
             <td>{{ a.message }}</td>
             <td class="text-end">
               {% if a.host %}
-                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('host_view', host_id=a.host.id) }}">Voir l’hôte</a>
+                <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="btn btn-sm btn-outline-primary">
+                  Voir le host
+                </a>
               {% endif %}
             </td>
           </tr>
@@ -49,8 +74,9 @@
       </table>
     </div>
   {% else %}
-    <div class="alert alert-info">
-      Aucune alerte pour le moment. (Des alertes de test seront générées automatiquement en dev.)
+    <div class="alert alert-info mt-3">
+      Aucune alerte détectée.  
+      <div class="small text-muted">Le poller SNMP s’exécute toutes les 15 s — actualisez dans quelques instants.</div>
     </div>
   {% endif %}
 {% endblock %}
