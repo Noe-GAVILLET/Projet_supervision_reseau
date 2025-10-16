@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify, request, abort, current_app
 from snmp_utils import get_metrics
 from db_utils import upsert_current_metric, open_alert
+from models_extra import Measurement
+from datetime import datetime, timedelta
+from database import db
 
 bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 
@@ -23,7 +26,7 @@ def poll_host_api(host_id):
             data = get_metrics(host.ip, host.snmp_community, host.port, cat)
             result[cat] = data
             for oid, val in data.items():
-                upsert_current_metric(host.id, oid, oid, val, cat)
+                upsert_current_metric(db, host.id, oid, oid, val, meta=cat)
         except Exception as e:
             msg = f"Erreur SNMP ({cat}): {e}"
             errors.append(msg)
@@ -41,11 +44,8 @@ def poll_host_api(host_id):
 
 @bp.route("/all", methods=["GET"])
 def poll_all_hosts():
-    """
-    Lance un poll manuel sur tous les hôtes (utile pour un test global).
-    Ex:
-      GET /api/poll/all
-    """
+    Host = db.Model._decl_class_registry.get("Host")
+
     hosts = Host.query.all()
     summary = []
 
@@ -56,7 +56,7 @@ def poll_all_hosts():
                 data = get_metrics(h.ip, h.snmp_community, h.port, cat)
                 cat_metrics[cat] = data
                 for oid, val in data.items():
-                    upsert_current_metric(db, h.id, oid, val, cat)
+                    upsert_current_metric(db, h.id, oid, oid, val, meta=cat)
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
@@ -73,3 +73,43 @@ def poll_all_hosts():
 
     db.session.commit()
     return jsonify(summary)
+
+
+# 🔥 NOUVELLE ROUTE : Historique des métriques par host + catégorie
+@bp.route("/metrics/<int:host_id>/<string:category>", methods=["GET"])
+def metrics_history(host_id, category):
+    """
+    Ex: GET /api/poll/metrics/1/cpu?minutes=5
+    Retourne l'historique des métriques pour un host donné et une catégorie SNMP.
+    """    
+    try:
+        minutes = int(request.args.get("minutes", 5))
+    except ValueError:
+        minutes = 5
+
+    since = datetime.utcnow() - timedelta(minutes=minutes)
+
+    rows = (
+        db.session.query(Measurement)
+        .filter(Measurement.host_id == host_id)
+        .filter(Measurement.meta == category)
+        .filter(Measurement.ts >= since)
+        .order_by(Measurement.ts.asc())
+        .limit(500)
+        .all()
+    )
+
+    data = []
+    for r in rows:
+        try:
+            val = float(r.value)
+        except (ValueError, TypeError):
+            continue
+
+        data.append({
+            "timestamp": r.ts.isoformat(),
+            "metric": r.metric,
+            "value": val
+        })
+
+    return jsonify(data)

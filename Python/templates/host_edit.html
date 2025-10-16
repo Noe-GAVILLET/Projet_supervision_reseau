@@ -48,12 +48,12 @@
       <div class="col-12">
         <label class="form-label">Catégories SNMP</label>
         <div class="d-flex flex-wrap gap-3">
-          {% set categories = ["system", "cpu", "storage", "interfaces"] %}
+          {% set categories = ["system", "cpu", "ram", "storage", "interfaces"] %}
           {% set selected = host.snmp_categories or [] %}
           {% for cat in categories %}
             <div class="form-check">
               <input class="form-check-input" type="checkbox" name="snmp_categories[]" value="{{ cat }}" id="cat-{{ cat }}"
-                     {% if cat in selected %}checked{% endif %}>
+                    {% if cat in selected %}checked{% endif %}>
               <label class="form-check-label" for="cat-{{ cat }}">{{ cat|capitalize }}</label>
             </div>
           {% endfor %}

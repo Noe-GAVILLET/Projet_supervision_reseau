@@ -1,16 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">Espace administrateur</h3>
+<div class="container-fluid">
+  <h3 class="mb-4">Dashboard de supervision</h3>
+
+  <!-- Widgets -->
+  <div class="row g-4 mb-4">
+    <div class="col-md-3">
+      <div class="card text-white bg-primary h-100">
+        <div class="card-body">
+          <h5 class="card-title">Total hôtes</h5>
+          <p class="card-text fs-4 fw-bold">{{ stats.total_hosts }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-success h-100">
+        <div class="card-body">
+          <h5 class="card-title">Hôtes UP</h5>
+          <p class="card-text fs-4 fw-bold">{{ stats.up }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-danger h-100">
+        <div class="card-body">
+          <h5 class="card-title">Hôtes DOWN</h5>
+          <p class="card-text fs-4 fw-bold">{{ stats.down }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-secondary h-100">
+        <div class="card-body">
+          <h5 class="card-title">Inconnus</h5>
+          <p class="card-text fs-4 fw-bold">{{ stats.unknown }}</p>
+        </div>
+      </div>
+    </div>
   </div>
 
-  {# 🔴 Popup si un ou plusieurs équipements sont down #}
-  {% if down_hosts %}
-  <div class="alert alert-danger text-center fs-5 fw-bold">
-    ⚠️ Équipement(s) injoignable(s) : {{ down_hosts|join(', ') }}
+  <!-- Répartition par catégorie SNMP -->
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Catégories SNMP</h5>
+          <div class="d-flex flex-wrap gap-2">
+            {% for cat, count in stats.by_category.items() %}
+              <div class="badge bg-info text-dark p-3">
+                {{ cat|capitalize }}: <strong>{{ count }}</strong>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  {% endif %}
 
+  <!-- Tableau des hôtes -->
   {% if hosts %}
     <div class="table-responsive">
       <table class="table align-middle">
@@ -76,9 +123,10 @@
   {% else %}
     <div class="alert alert-info">Aucun host pour le moment. Cliquez sur “Créer un host”.</div>
   {% endif %}
+</div>
 
-  <script>
-    // 🔄 Actualisation auto toutes les 10s pour suivre le statut en direct
-    setInterval(() => location.reload(), 10000);
-  </script>
+<!-- 🔄 Rafraîchissement auto toutes les 10s -->
+<script>
+  setInterval(() => location.reload(), 10000);
+</script>
 {% endblock %}

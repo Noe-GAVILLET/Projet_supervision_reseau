@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import List, Optional
 from snmp_utils import snmp_get, snmp_walk, get_metrics
+from models import User, Host, Alert, Group, Tag, Template, CurrentMetric, Measurement, host_tags
 
 # --- Flask / SQLAlchemy / Security ---
 from flask import (
@@ -38,74 +39,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # ✅ Lier directement db à app (pas de init_app)
 db.init_app(app)
-
-# -----------------------------------------------------------------------------
-# Modèles (alignés sur ton schéma SQL)
-# -----------------------------------------------------------------------------
-host_tags = db.Table(
-    "host_tags",
-    db.Column("host_id", db.Integer, db.ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("tag_id", db.Integer, db.ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-)
-
-class User(db.Model):
-    __tablename__ = "users"
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(255))
-    password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum("admin", "operator", name="role_enum"), nullable=False, default="operator")
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-
-class Group(db.Model):
-    __tablename__ = "groups"
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-
-class Template(db.Model):
-    __tablename__ = "templates"
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    description = db.Column(db.Text)
-    snmp_version = db.Column(db.Enum("v1", "v2c", "v3", name="snmp_ver_enum"))
-    params = db.Column(db.JSON)
-
-class Tag(db.Model):
-    __tablename__ = "tags"
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-
-class Host(db.Model):
-    __tablename__ = "hosts"
-    id = db.Column(db.Integer, primary_key=True)
-    hostname = db.Column(db.String(120), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-    ip = db.Column(db.String(45), nullable=False)
-    port = db.Column(db.Integer, nullable=False, default=161)
-
-    # --- SNMP v2c uniquement ---
-    snmp_community = db.Column(db.String(128), nullable=True, default="public")
-    # JSON: ["system","cpu","storage","interfaces"]
-    snmp_categories = db.Column(db.JSON, nullable=True)
-
-    group_id = db.Column(db.Integer, db.ForeignKey("groups.id"))
-    template_id = db.Column(db.Integer, db.ForeignKey("templates.id"))
-
-    group = db.relationship("Group", backref=db.backref("hosts", lazy=True))
-    template = db.relationship("Template", backref=db.backref("hosts", lazy=True))
-    tags = db.relationship("Tag", secondary=host_tags, lazy="subquery",
-                           backref=db.backref("hosts", lazy=True))
-
-class Alert(db.Model):
-    __tablename__ = "alerts"
-    id = db.Column(db.Integer, primary_key=True)
-    host_id = db.Column(db.Integer, db.ForeignKey("hosts.id"), nullable=True)
-    severity = db.Column(db.Enum("info", "warning", "critical", name="severity_enum"), nullable=False, default="info")
-    message = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
-
-    host = db.relationship("Host", backref=db.backref("alerts", lazy=True))
 
 # Optionnel : ne pas forcer la création si le schéma existe déjà en BDD
 # with app.app_context():
@@ -173,6 +106,18 @@ def _ensure_template(name: str) -> Optional[Template]:
         db.session.flush()
     return tpl
 
+def get_down_hostnames():
+    critical_alerts = (
+        Alert.query
+        .filter(
+            Alert.severity == "critical",
+            Alert.message.like("%ping échoué%"),
+            Alert.resolved_at.is_(None)
+        )
+        .all()
+    )
+    return {a.host.hostname for a in critical_alerts if a.host}
+
 
 @app.before_request
 def load_user():
@@ -225,14 +170,31 @@ def hosts_list():
         .all()
     )
 
-    down_hosts = {a.host.hostname for a in recent_criticals if a.host}
+    down_hosts = []
+    up_hosts = []
+    unknown_hosts = []
+
+    for h in hosts:
+        if h.snmp_categories:
+            if h.hostname in get_down_hostnames():  # ou autre logique
+                down_hosts.append(h)
+            else:
+                up_hosts.append(h)
+        else:
+            unknown_hosts.append(h)
 
     return render_template(
-        "admin.html",
-        hosts=hosts,
-        title="Liste des hôtes",
-        down_hosts=down_hosts
-    )
+    "admin.html",
+    hosts=hosts,
+    down_hosts=[h.hostname for h in down_hosts],
+    stats={
+        "total_hosts": len(hosts),
+        "up": len(up_hosts),
+        "down": len(down_hosts),
+        "unknown": len(unknown_hosts),
+        "by_category": {}
+    }
+)
 
 @app.route("/hosts/search")
 @login_required
@@ -276,7 +238,16 @@ def alerts():
             (Alert.message.ilike(f"%{q}%"))
         )
 
-    alerts = alerts_q.order_by(Alert.created_at.desc()).limit(200).all()
+    from sqlalchemy import case
+
+    alerts = alerts_q.order_by(
+        case(
+            (Alert.severity == "critical", 0),
+            (Alert.severity == "warning", 1),
+            (Alert.severity == "info", 2),
+        ),
+        Alert.created_at.desc()
+    ).limit(200).all()
 
     return render_template("alerts.html", alerts=alerts, severity=severity, q=q)
 
@@ -296,16 +267,19 @@ def healthz():
         user=g.user,
         role=g.role,
     )
+
 @app.route("/hosts/<int:host_id>")
 @login_required
 def host_view(host_id: int):
-    from models_extra import CurrentMetric
+    from models import CurrentMetric
+    from snmp_utils import SYSTEM_OID_LABELS, format_sysuptime  # 🔽 Ajoute cette ligne
 
     host = db.session.get(Host, host_id)
     if not host:
         abort(404)
 
     metrics = {}
+    system_data = []
     error = None
 
     try:
@@ -323,7 +297,6 @@ def host_view(host_id: int):
 
     # 🔹 Si le live échoue → on récupère depuis la BDD
     if not metrics:
-        metrics = {}
         rows = CurrentMetric.query.filter_by(host_id=host.id).all()
         if rows:
             for r in rows:
@@ -332,8 +305,21 @@ def host_view(host_id: int):
         else:
             error = error or "Aucune métrique disponible (host jamais contacté)."
 
-    return render_template("host_detail.html", host=host, metrics=metrics, error=error)
+    # 🔸 Extraire system_data lisible à partir des OIDs de la catégorie "system"
+    if "system" in metrics:
+        for oid, value in metrics["system"].items():
+            label = SYSTEM_OID_LABELS.get(oid, oid)
+            if oid == '1.3.6.1.2.1.1.3.0':  # uptime
+                value = format_sysuptime(value)
+            system_data.append((label, value))
 
+    return render_template(
+        "host_detail.html",
+        host=host,
+        metrics=metrics,
+        system_data=system_data,
+        error=error
+    )
 
 @app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -357,7 +343,7 @@ def host_edit(host_id: int):
         # SNMP v2c
         snmp_community = request.form.get("snmp_community", "public").strip()
         raw_categories = request.form.getlist("snmp_categories[]")  # <<< IMPORTANT
-        allowed = {"system", "cpu", "storage", "interfaces"}
+        allowed = {"system", "cpu", "ram", "storage", "interfaces"}
         snmp_categories = [c for c in raw_categories if c in allowed]
         if not snmp_categories:
             snmp_categories = ["system"]
@@ -432,7 +418,49 @@ def host_delete(host_id: int):
 @login_required
 def admin():
     hosts = Host.query.order_by(Host.hostname.asc()).all()
-    return render_template("admin.html", hosts=hosts)
+
+    down_hosts = []
+    up_hosts = []
+    unknown_hosts = []
+
+    for h in hosts:
+        if h.snmp_categories:
+            if h.hostname in get_down_hostnames():  # Utilise ta logique existante ici
+                down_hosts.append(h)
+            else:
+                up_hosts.append(h)
+        else:
+            unknown_hosts.append(h)
+
+    # Préparer les stats
+    stats = {
+        "total_hosts": len(hosts),
+        "up": len(up_hosts),
+        "down": len(down_hosts),
+        "unknown": len(unknown_hosts),
+        "by_category": {}
+    }
+
+    for h in hosts:
+        if not h.snmp_categories:
+            continue
+        for cat in h.snmp_categories:
+            stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
+
+    # Alertes récentes (si modèle disponible)
+    try:
+        alerts = Alert.query.order_by(Alert.created_at.desc()).limit(5).all()
+    except:
+        alerts = []
+
+    return render_template(
+        "admin.html",
+        hosts=hosts,
+        down_hosts=[h.hostname for h in down_hosts],
+        stats=stats,
+        stats_json=[stats["up"], stats["down"], stats["unknown"]],
+        alerts=alerts
+    )
 
 @app.route("/users/new", methods=["GET", "POST"])
 @login_required
@@ -741,7 +769,7 @@ with app.app_context():
 # -----------------------------------------------------------------------------
 from flask import g
 
-from models_extra import CurrentMetric
+from models import CurrentMetric
 
 @app.context_processor
 def inject_global_state():

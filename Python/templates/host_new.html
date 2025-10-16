@@ -18,6 +18,7 @@
         <label class="form-label">Adresse IP *</label>
         <input name="ip" class="form-control" placeholder="192.168.1.10" required />
       </div>
+
       <div class="col-md-4">
         <label class="form-label">Port</label>
         <input name="port" class="form-control" value="161" />
@@ -49,9 +50,9 @@
       <div class="col-12">
         <label class="form-label">Catégories SNMP *</label>
         <div class="d-flex flex-wrap gap-4">
-          {% for cat in ["system", "cpu", "storage", "interfaces"] %}
+          {% for cat in ["system", "cpu", "ram", "storage", "interfaces"] %}
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="snmp_categories" value="{{ cat }}" id="chk_{{ cat }}">
+              <input class="form-check-input" type="checkbox" name="snmp_categories[]" value="{{ cat }}" id="chk_{{ cat }}">
               <label class="form-check-label" for="chk_{{ cat }}">
                 {{ cat|capitalize }}
               </label>
@@ -59,7 +60,7 @@
           {% endfor %}
         </div>
         <div class="form-text">
-          Cochez une ou plusieurs catégories (ex : System + Storage + Interfaces).
+          Cochez une ou plusieurs catégories (ex : System + RAM + Storage + Interfaces).
         </div>
       </div>
 
