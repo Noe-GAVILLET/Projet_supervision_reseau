@@ -226,6 +226,13 @@ CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 -- (Optionnel) Utilisateur admin par défaut (hash SHA2 d'exemple)
 --   ⚠ En production, stocke un hash fort (pbkdf2/bcrypt/argon2) géré par l'app.
 -- ============================================================================
-INSERT INTO `users` (`username`,`email`,`password_hash`,`role`)
-VALUES ('admin','admin@example.com', UPPER(SHA2('admin', 256)), 'admin')
-ON DUPLICATE KEY UPDATE username = username;
+DELIMITER $$
+
+INSERT INTO `users` (`username`, `email`, `password_hash`, `role`)
+SELECT 'admin', 'admin@example.com', UPPER(SHA2('admin',256)), 'admin'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `users` WHERE `username` = 'admin'
+);
+$$
+
+DELIMITER ;
