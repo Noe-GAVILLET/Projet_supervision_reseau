@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS `poll_results` (
 -- ============================================================================
 -- Index supplémentaires utiles
 -- ============================================================================
-CREATE INDEX IF NOT EXISTS `idx_hosts_updated_at` ON `hosts` (`updated_at`);
+CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 
 -- ============================================================================
 -- (Optionnel) Utilisateur admin par défaut (hash SHA2 d'exemple)
