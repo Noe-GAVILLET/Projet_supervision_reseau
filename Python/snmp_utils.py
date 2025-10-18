@@ -180,3 +180,19 @@ def get_storage_metrics(ip, community="public", port=161):
 
     return storage
 
+def get_severity(category, pct):
+    if category == "ram":
+        if pct > 90:
+            return "critical"
+        elif pct > 80:
+            return "warning"
+        else:
+            return "normal"
+    elif category == "storage":
+        if pct > 95:
+            return "critical"
+        elif pct > 85:
+            return "warning"
+        else:
+            return "normal"
+    return "normal"

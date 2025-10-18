@@ -10,6 +10,7 @@ from functools import wraps
 from typing import List, Optional
 from snmp_utils import snmp_get, snmp_walk, get_metrics
 from models import User, Host, Alert, Group, Tag, Template, CurrentMetric, Measurement, host_tags
+from seuils import get_severity
 
 # --- Flask / SQLAlchemy / Security ---
 from flask import (
@@ -17,7 +18,7 @@ from flask import (
     request, session, flash, g, jsonify, abort
 )
 from database import db
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, case
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # ----------------------------------------------------------------------------- 
@@ -236,35 +237,35 @@ def hosts_search():
     return render_template("hosts_search.html", q=q, hosts=hosts)
 
 @app.route("/alerts")
-@login_required
 def alerts():
-    severity = request.args.get("severity", "").strip().lower()
-    q = request.args.get("q", "").strip()
+    severity = request.args.get("severity")
+    q = request.args.get("q")
+    status = request.args.get("status", "active")  # nouveau filtre (active / resolved / all)
 
-    alerts_q = Alert.query
+    query = Alert.query.join(Host, isouter=True)
 
-    if severity in ("info", "warning", "critical"):
-        alerts_q = alerts_q.filter(Alert.severity == severity)
+    # --- Filtre gravité ---
+    if severity:
+        query = query.filter(Alert.severity == severity)
 
+    # --- Filtre recherche host ---
     if q:
-        alerts_q = alerts_q.join(Host, isouter=True).filter(
-            (Host.hostname.ilike(f"%{q}%")) |
-            (Host.ip.ilike(f"%{q}%")) |
-            (Alert.message.ilike(f"%{q}%"))
-        )
+        query = query.filter(Host.hostname.ilike(f"%{q}%"))
 
-    from sqlalchemy import case
+    # --- Filtre statut ---
+    if status == "active":
+        query = query.filter(Alert.resolved_at == None)
+    elif status == "resolved":
+        query = query.filter(Alert.resolved_at.isnot(None))
+    # sinon ("all") → pas de filtre
 
-    alerts = alerts_q.order_by(
-        case(
-            (Alert.severity == "critical", 0),
-            (Alert.severity == "warning", 1),
-            (Alert.severity == "info", 2),
-        ),
+    # --- Tri : actives en haut, puis résolues ---
+    alerts = query.order_by(
+        case((Alert.resolved_at == None, 0), else_=1),
         Alert.created_at.desc()
-    ).limit(200).all()
+    ).all()
 
-    return render_template("alerts.html", alerts=alerts, severity=severity, q=q)
+    return render_template("alerts.html", alerts=alerts, severity=severity, q=q, status=status)
 
 @app.route("/healthz")
 def healthz():
@@ -931,6 +932,9 @@ def inject_host_status_cache():
 def inject_user():
     """Rend current_user et current_role disponibles dans tous les templates."""
     return dict(current_user=g.user, current_role=g.role)
+
+def inject_severity_utils():
+    return dict(get_severity=get_severity)
 
 # -----------------------------------------------------------------------------
 # Lancement

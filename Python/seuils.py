@@ -1,6 +1,6 @@
 # seuils.py
 import subprocess
-from db_utils import open_alert
+from db_utils import open_alert, resolve_alert
 from models import CurrentMetric, Measurement, Alert
 import platform
 
@@ -35,7 +35,8 @@ def detect_interface_changes(db, host_id, snmp_data, Alert):
 
 
 def check_thresholds(db, host, category, oid, val, Alert):
-    """Vérifie les seuils critiques."""
+    """Vérifie les seuils critiques et résout les alertes si normalisé."""
+    
     try:
         value = float(val)
     except Exception:
@@ -44,17 +45,53 @@ def check_thresholds(db, host, category, oid, val, Alert):
     # --- CPU ---
     if "cpu" in category.lower():
         if value > 90:
-            open_alert(db, Alert, host.id, severity="critical",
-                       message=f"CPU critique sur {host.hostname} ({value:.1f}%)")
+            open_alert(db, Alert, host.id, "critical", f"CPU critique sur {host.hostname} ({value:.1f}%)")
         elif value > 80:
-            open_alert(db, Alert, host.id, severity="warning",
-                       message=f"CPU élevé sur {host.hostname} ({value:.1f}%)")
+            open_alert(db, Alert, host.id, "warning", f"CPU élevé sur {host.hostname} ({value:.1f}%)")
+        else:
+            resolve_alert(db, Alert, host.id, "cpu", "CPU")
 
     # --- STORAGE ---
-    if "storage" in category.lower():
+    elif "storage" in category.lower():
         if value > 95:
-            open_alert(db, Alert, host.id, severity="critical",
-                       message=f"Stockage presque plein sur {host.hostname} ({value:.1f}%)")
+            open_alert(db, Alert, host.id, "critical", f"Stockage presque plein sur {host.hostname} ({value:.1f}%)")
         elif value > 85:
-            open_alert(db, Alert, host.id, severity="warning",
-                       message=f"Stockage élevé sur {host.hostname} ({value:.1f}%)")
+            open_alert(db, Alert, host.id, "warning", f"Stockage élevé sur {host.hostname} ({value:.1f}%)")
+        else:
+            resolve_alert(db, Alert, host.id, "storage", "Stockage")
+
+    # --- RAM ---
+    elif "ram" in category.lower():
+        if value > 95:
+            open_alert(db, Alert, host.id, "critical", f"RAM critique sur {host.hostname} ({value:.1f}%)")
+        elif value > 85:
+            open_alert(db, Alert, host.id, "warning", f"RAM élevée sur {host.hostname} ({value:.1f}%)")
+        else:
+            resolve_alert(db, Alert, host.id, "ram", "RAM")
+
+
+def get_severity(category: str, value: float) -> str:
+    """
+    Renvoie 'normal', 'warning' ou 'critical' selon les seuils pour une catégorie.
+    """
+    if not isinstance(value, (int, float)):
+        return "normal"
+
+    cat = category.lower()
+    if cat == "cpu":
+        if value > 90:
+            return "critical"
+        elif value > 80:
+            return "warning"
+    elif cat == "ram":
+        if value > 90:
+            return "critical"
+        elif value > 80:
+            return "warning"
+    elif cat == "storage":
+        if value > 95:
+            return "critical"
+        elif value > 85:
+            return "warning"
+
+    return "normal"

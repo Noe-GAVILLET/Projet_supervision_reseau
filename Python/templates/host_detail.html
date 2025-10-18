@@ -62,14 +62,27 @@
 
         {% if category == "cpu" %}
           <table class="table table-sm">
-            <thead><tr><th>CPU</th><th>Charge</th></tr></thead>
+            <thead><tr><th>Cores</th><th>Charge</th></tr></thead>
             <tbody>
               {% for cpu_oid, load in values.items() %}
-                <tr><td>Core {{ loop.index }}</td><td>{{ load }}%</td></tr>
+                <tr>
+                  <td>Core {{ loop.index }}</td>
+                  <td>
+                    {% set pct = load|float %}
+                    {% if pct > 90 %}
+                      <span class="badge bg-danger text-white">{{ pct }}%</span>
+                    {% elif pct > 80 %}
+                      <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                    {% else %}
+                      <span class="badge bg-success text-white">{{ pct }}%</span>
+                    {% endif %}
+                  </td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>
         {% endif %}
+
 
         {% if category == "ram" %}
           <table class="table table-sm">
@@ -92,7 +105,16 @@
                       {{ "%.1f"|format(info.total / 1024) }} Mo
                     {% endif %}
                   </td>
-                  <td>{{ info.pct }}%</td>
+                  <td>
+                    {% set pct = info.pct|float %}
+                    {% if pct > 90 %}
+                      <span class="badge bg-danger text-white">{{ pct }}%</span>
+                    {% elif pct > 80 %}
+                      <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                    {% else %}
+                      <span class="badge bg-success text-white">{{ pct }}%</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -100,11 +122,11 @@
         {% endif %}
 
         {% if category == "storage" %}
-          <table class="table table-sm">
-            <thead><tr><th>Nom</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
-            <tbody>
-              {% for name, info in values.items() %}
-                {% if ".pct" not in name %}
+        <table class="table table-sm">
+          <thead><tr><th>Nom</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+          <tbody>
+            {% for name, info in values.items() %}
+              {% if ".pct" not in name %}
                 <tr>
                   <td>{{ name }}</td>
                   <td>
@@ -121,13 +143,22 @@
                       {{ "%.1f"|format(info.total / 1024) }} Mo
                     {% endif %}
                   </td>
-                  <td>{{ info.pct }}%</td>
+                  <td>
+                    {% set pct = info.pct|float %}
+                    {% if pct > 90 %}
+                      <span class="badge bg-danger text-white">{{ pct }}%</span>
+                    {% elif pct > 80 %}
+                      <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                    {% else %}
+                      <span class="badge bg-success text-white">{{ pct }}%</span>
+                    {% endif %}
+                  </td>
                 </tr>
-                {% endif %}
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
 
         {% if category == "interfaces" %}
           <table class="table table-sm">
@@ -182,61 +213,39 @@ document.addEventListener("DOMContentLoaded", function () {
 
         data.forEach(entry => {
           let label = entry.metric;
-
-          // 🎯 CPU : renommer OID en "Core X"
           if (category === "cpu") {
-            if (!metricMap[label]) {
-              metricMap[label] = `Core ${coreIndex++}`;
-            }
+            if (!metricMap[label]) metricMap[label] = `Core ${coreIndex++}`;
             label = metricMap[label];
           }
-
-          if (!byMetric[label]) {
-            byMetric[label] = [];
-          }
-
+          if (!byMetric[label]) byMetric[label] = [];
           byMetric[label].push({ x: entry.timestamp, y: entry.value });
         });
 
-        // 🎯 RAM : ne garder que "pct", affiché comme "Physical memory"
-      if (category === "ram") {
-        const filtered = {};
-        if (byMetric["pct"]) {
-          filtered["Physical memory"] = byMetric["pct"];
+        if (category === "ram") {
+          const filtered = {};
+          if (byMetric["pct"]) filtered["Physical memory"] = byMetric["pct"];
+          Object.keys(byMetric).forEach(k => delete byMetric[k]);
+          Object.assign(byMetric, filtered);
         }
-        Object.assign(byMetric, filtered);
-        for (const key of Object.keys(byMetric)) {
-          if (key !== "Physical memory") delete byMetric[key];
-        }
-      }
 
-        // 🎯 STORAGE : ne garder que les ".pct" et les renommer
         if (category === "storage") {
           const keepList = ["swap space", "memory buffers", "/"];
           const filtered = {};
-
           for (const metric of Object.keys(byMetric)) {
             if (!metric.endsWith(".pct")) continue;
             const label = metric.replace(/\.pct$/, "");
-
-            // Filtrer dynamiquement comme dans le backend
             const name = label.toLowerCase();
             const ignored = [
               "virtual memory", "physical memory", "cached", "shared", "available",
               "/run", "/dev/shm", "/tmp", "/lock", "/credentials", "/user"
             ];
-
             if (keepList.includes(label) || !ignored.some(sub => name.includes(sub))) {
               filtered[label] = byMetric[metric];
             }
           }
-
-          // Appliquer le filtrage
           Object.keys(byMetric).forEach(k => delete byMetric[k]);
           Object.assign(byMetric, filtered);
         }
-
-
 
         const datasets = Object.entries(byMetric).map(([metric, points]) => ({
           label: metric,
@@ -248,10 +257,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const yAxisOptions = {
           beginAtZero: true,
           max: 100,
-          title: {
-            display: true,
-            text: (category === 'cpu') ? 'Charge CPU (%)' : 'Utilisation (%)'
-          }
+          title: { display: true, text: (category === 'cpu') ? 'Charge CPU (%)' : 'Utilisation (%)' }
         };
 
         const ctx = document.getElementById(`chart-${category}`);
@@ -262,24 +268,15 @@ document.addEventListener("DOMContentLoaded", function () {
             options: {
               responsive: true,
               plugins: {
-                title: {
-                  display: true,
-                  text: `Historique ${category.toUpperCase()} (10 min)`
-                },
+                title: { display: true, text: `Historique ${category.toUpperCase()} (10 min)` },
                 tooltip: {
                   callbacks: {
-                    label: function (context) {
-                      return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
-                    }
+                    label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
                   }
                 }
               },
               scales: {
-                x: {
-                  type: 'time',
-                  time: { unit: 'minute' },
-                  title: { display: true, text: 'Temps' }
-                },
+                x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } },
                 y: yAxisOptions
               }
             }

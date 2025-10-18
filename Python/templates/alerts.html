@@ -8,21 +8,31 @@
   {% if alerts and alerts|length %}
     <div class="card shadow-sm mb-3">
       <div class="card-body">
-        <form method="get" class="row g-2 align-items-center">
-          <div class="col-md-3">
-            <label class="form-label mb-0 text-muted small">Filtrer par gravité</label>
-            <select name="severity" class="form-select" onchange="this.form.submit()">
-              <option value="">Toutes</option>
-              <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critique</option>
-              <option value="warning" {% if severity == 'warning' %}selected{% endif %}>Avertissement</option>
-              <option value="info" {% if severity == 'info' %}selected{% endif %}>Info</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label mb-0 text-muted small">Rechercher un host</label>
-            <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ex: router, debian..." />
-          </div>
-        </form>
+      <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-3">
+          <label class="form-label mb-0 text-muted small">Filtrer par gravité</label>
+          <select name="severity" class="form-select" onchange="this.form.submit()">
+            <option value="">Toutes</option>
+            <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critique</option>
+            <option value="warning" {% if severity == 'warning' %}selected{% endif %}>Avertissement</option>
+            <option value="info" {% if severity == 'info' %}selected{% endif %}>Info</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label mb-0 text-muted small">Filtrer par statut</label>
+          <select name="status" class="form-select" onchange="this.form.submit()">
+            <option value="active" {% if status == 'active' %}selected{% endif %}>Actives</option>
+            <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Résolues</option>
+            <option value="all" {% if status == 'all' %}selected{% endif %}>Toutes</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label mb-0 text-muted small">Rechercher un host</label>
+          <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ex: router, debian..." />
+        </div>
+      </form>
       </div>
     </div>
 
@@ -39,8 +49,22 @@
         </thead>
         <tbody>
           {% for a in alerts %}
-          <tr class="{% if a.severity == 'critical' %}table-danger{% elif a.severity == 'warning' %}table-warning{% endif %}">
-            <td class="text-nowrap">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <tr
+            class="{% if a.resolved_at %}
+                      table-success
+                    {% elif a.severity == 'critical' %}
+                      table-danger
+                    {% elif a.severity == 'warning' %}
+                      table-warning
+                    {% endif %}">
+            <td class="text-nowrap">
+              {{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+              {% if a.resolved_at %}
+                <div class="small text-muted">
+                  ✅ Résolue : {{ a.resolved_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                </div>
+              {% endif %}
+            </td>
             <td>
               {% if a.host %}
                 <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="fw-semibold">
@@ -52,7 +76,9 @@
               {% endif %}
             </td>
             <td>
-              {% if a.severity == 'critical' %}
+              {% if a.resolved_at %}
+                <span class="badge bg-success">Rétablie</span>
+              {% elif a.severity == 'critical' %}
                 <span class="badge bg-danger">Critique</span>
               {% elif a.severity == 'warning' %}
                 <span class="badge bg-warning text-dark">Avertissement</span>
@@ -60,7 +86,12 @@
                 <span class="badge bg-secondary">Info</span>
               {% endif %}
             </td>
-            <td>{{ a.message }}</td>
+            <td>
+              {{ a.message }}
+              {% if a.resolved_at %}
+                <div class="small text-muted fst-italic">Le service est revenu à la normale</div>
+              {% endif %}
+            </td>
             <td class="text-end">
               {% if a.host %}
                 <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="btn btn-sm btn-outline-primary">
