@@ -10,6 +10,10 @@ bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 
 @bp.route("/<int:host_id>", methods=["GET"])
 def poll_host_api(host_id):
+    """
+    Lance un poll SNMP sur un hôte spécifique et stocke les métriques
+    dans current_metrics + measurements.
+    """
     app = current_app
     db = app.extensions["sqlalchemy"].db
     Host = db.Model._decl_class_registry.get("Host")
@@ -25,8 +29,35 @@ def poll_host_api(host_id):
         try:
             data = get_metrics(host.ip, host.snmp_community, host.port, cat)
             result[cat] = data
-            for oid, val in data.items():
-                upsert_current_metric(db, host.id, oid, oid, val, meta=cat)
+
+            for metric, val in data.items():
+                # 🔹 RAM ou STORAGE : dictionnaire {used, total, pct}
+                if isinstance(val, dict) and "used" in val and "total" in val:
+                    pct = val.get("pct", 0)
+                    label = metric.split(".")[0]  # Ex: "Virtual memory"
+
+                    upsert_current_metric(db, host.id, label, label, pct, meta=cat)
+
+                    db.session.add(Measurement(
+                        host_id=host.id,
+                        oid=metric,        # Ex: "Virtual memory.pct"
+                        metric=label,      # Ex: "Virtual memory" ← pour le graphe
+                        value=str(pct),
+                        meta=cat
+                    ))
+
+                # 🔹 Autres : CPU, interfaces, etc.
+                else:
+                    upsert_current_metric(db, host.id, metric, metric, val, meta=cat)
+
+                    db.session.add(Measurement(
+                        host_id=host.id,
+                        oid=metric,
+                        metric=metric,
+                        value=str(val),
+                        meta=cat
+                    ))
+
         except Exception as e:
             msg = f"Erreur SNMP ({cat}): {e}"
             errors.append(msg)
@@ -44,8 +75,10 @@ def poll_host_api(host_id):
 
 @bp.route("/all", methods=["GET"])
 def poll_all_hosts():
+    """
+    Lance un poll SNMP sur tous les hôtes connus.
+    """
     Host = db.Model._decl_class_registry.get("Host")
-
     hosts = Host.query.all()
     summary = []
 
@@ -55,13 +88,38 @@ def poll_all_hosts():
             for cat in (h.snmp_categories or []):
                 data = get_metrics(h.ip, h.snmp_community, h.port, cat)
                 cat_metrics[cat] = data
-                for oid, val in data.items():
-                    upsert_current_metric(db, h.id, oid, oid, val, meta=cat)
+
+                for metric, val in data.items():
+                    if isinstance(val, dict) and "used" in val and "total" in val:
+                        pct = val.get("pct", 0)
+                        label = metric.split(".")[0]
+
+                        upsert_current_metric(db, h.id, label, label, pct, meta=cat)
+
+                        db.session.add(Measurement(
+                            host_id=h.id,
+                            oid=metric,
+                            metric=label,
+                            value=str(pct),
+                            meta=cat
+                        ))
+                    else:
+                        upsert_current_metric(db, h.id, metric, metric, val, meta=cat)
+
+                        db.session.add(Measurement(
+                            host_id=h.id,
+                            oid=metric,
+                            metric=metric,
+                            value=str(val),
+                            meta=cat
+                        ))
+
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
                 "metrics": cat_metrics
             })
+
         except Exception as e:
             msg = f"Erreur SNMP ({h.hostname}): {e}"
             open_alert(db, h.id, "warning", msg)
@@ -75,13 +133,13 @@ def poll_all_hosts():
     return jsonify(summary)
 
 
-# 🔥 NOUVELLE ROUTE : Historique des métriques par host + catégorie
+# 🔥 Historique des métriques
 @bp.route("/metrics/<int:host_id>/<string:category>", methods=["GET"])
 def metrics_history(host_id, category):
     """
     Ex: GET /api/poll/metrics/1/cpu?minutes=5
     Retourne l'historique des métriques pour un host donné et une catégorie SNMP.
-    """    
+    """
     try:
         minutes = int(request.args.get("minutes", 5))
     except ValueError:

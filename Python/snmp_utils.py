@@ -63,72 +63,77 @@ def snmp_walk(ip: str, community: str, port: int, oid: str, limit: int = 50):
 
 
 def get_metrics(ip: str, community: str, port: int, category: str):
-    """
-    Retourne les métriques SNMP pour une catégorie donnée.
-    Catégories supportées: system, cpu, storage, interfaces
-    """
     if category == "system":
-        # Infos système de base
         return {
-            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.1.0"),  # sysDescr
-            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.3.0"),  # sysUpTime
-            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.5.0"),  # sysName
+            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.1.0"),
+            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.3.0"),
+            **snmp_get(ip, community, port, "1.3.6.1.2.1.1.5.0"),
         }
-    
+
     elif category == "ram":
-        # RAM (mémoires spécifiques)
-        descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.3")
-        size = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.5")
-        used = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.6")
+        descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.3", limit=30)
+        size = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.5", limit=30)
+        used = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.6", limit=30)
 
         results = {}
+
         for oid, name in descr.items():
-            if name.lower() in [
-                "physical memory", "virtual memory", "cached memory", "shared memory",
-                "memory buffers", "available memory"
-            ]:
-                idx = oid.split(".")[-1]
-                try:
-                    total = int(size.get(f"1.3.6.1.2.1.25.2.3.1.5.{idx}", 0))
-                    used_val = int(used.get(f"1.3.6.1.2.1.25.2.3.1.6.{idx}", 0))
-                    results[name] = {
-                        "used": used_val,
-                        "total": total,
-                    }
-                except ValueError:
-                    continue
-        return results
-
-    elif category == "cpu":
-        # Charge CPU (hrProcessorLoad)
-        return snmp_walk(ip, community, port, "1.3.6.1.2.1.25.3.3.1.2", limit=10)
-
-    elif category == "storage":
-        # Stockage (hrStorageDescr, hrStorageSize, hrStorageUsed)
-        descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.3", limit=20)
-        size = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.5", limit=20)
-        used = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.6", limit=20)
-
-        results = {}
-        for oid, name in descr.items():
-            # ⛔️ Filtrer la mémoire pour éviter le doublon avec "ram"
-            if "memory" in name.lower():
+            name_lower = name.lower()
+            if "physical memory" not in name_lower:
                 continue
 
             idx = oid.split(".")[-1]
             try:
                 total = int(size.get(f"1.3.6.1.2.1.25.2.3.1.5.{idx}", 0))
                 used_val = int(used.get(f"1.3.6.1.2.1.25.2.3.1.6.{idx}", 0))
+                pct = round(used_val / total * 100, 2) if total > 0 else 0
+
+                results["Physical memory"] = {
+                    "used": used_val,
+                    "total": total,
+                    "pct": pct
+                }
+
+            except ValueError:
+                continue
+
+        return results
+
+    elif category == "cpu":
+        return snmp_walk(ip, community, port, "1.3.6.1.2.1.25.3.3.1.2", limit=10)
+
+    elif category == "storage":
+        descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.3", limit=30)
+        size = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.5", limit=30)
+        used = snmp_walk(ip, community, port, "1.3.6.1.2.1.25.2.3.1.6", limit=30)
+
+        results = {}
+        for oid, name in descr.items():
+            name_lower = name.lower()
+            if any(sub in name_lower for sub in [
+                "virtual memory", "physical memory", "cached", "shared", "available",
+                "/run", "/dev/shm", "/tmp", "/lock", "/credentials", "/user"
+            ]):
+                continue
+
+            idx = oid.split(".")[-1]
+            try:
+                total = int(size.get(f"1.3.6.1.2.1.25.2.3.1.5.{idx}", 0))
+                used_val = int(used.get(f"1.3.6.1.2.1.25.2.3.1.6.{idx}", 0))
+                pct = round(used_val / total * 100, 2) if total > 0 else 0
+
                 results[name] = {
                     "used": used_val,
                     "total": total,
+                    "pct": pct
                 }
+
+                results[f"{name}.pct"] = pct  # Pour graphe
             except ValueError:
                 continue
         return results
 
     elif category == "interfaces":
-        # Interfaces réseau (ifDescr, ifOperStatus)
         descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.2", limit=10)
         status = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.8", limit=10)
 
@@ -138,6 +143,7 @@ def get_metrics(ip: str, community: str, port: int, category: str):
             state = status.get(f"1.3.6.1.2.1.2.2.1.8.{idx}", "unknown")
             results[name] = "up" if state == "1" else "down"
         return results
+
 
     else:
         raise ValueError(f"Catégorie SNMP inconnue : {category}")

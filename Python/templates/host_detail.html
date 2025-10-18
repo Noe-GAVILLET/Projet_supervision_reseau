@@ -49,80 +49,86 @@
       <div class="card-body">
         <h5 class="card-title text-capitalize">{{ category }}</h5>
 
-        <!-- SYSTEM (custom affichage lisible) -->
         {% if category == "system" %}
           <table class="table table-sm">
             <thead><tr><th>Champ</th><th>Valeur</th></tr></thead>
             <tbody>
               {% for label, val in system_data %}
-                <tr>
-                  <td>{{ label }}</td>
-                  <td>{{ val }}</td>
-                </tr>
+                <tr><td>{{ label }}</td><td>{{ val }}</td></tr>
               {% endfor %}
             </tbody>
           </table>
         {% endif %}
 
-        <!-- CPU -->
         {% if category == "cpu" %}
           <table class="table table-sm">
             <thead><tr><th>CPU</th><th>Charge</th></tr></thead>
             <tbody>
               {% for cpu_oid, load in values.items() %}
-                <tr><td title="{{ cpu_oid }}">Core {{ loop.index }}</td><td>{{ load }}%</td></tr>
+                <tr><td>Core {{ loop.index }}</td><td>{{ load }}%</td></tr>
               {% endfor %}
             </tbody>
           </table>
         {% endif %}
 
-        <!-- RAM -->
         {% if category == "ram" %}
           <table class="table table-sm">
             <thead><tr><th>Type</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
             <tbody>
               {% for name, info in values.items() %}
                 <tr>
-                  <td>{{ name }}</td>
-                  <td>{{ info.used }}</td>
-                  <td>{{ info.total }}</td>
+                  <td>Physical memory</td>
                   <td>
-                    {% if info.total and info.total > 0 %}
-                      {{ "%.1f"|format((info.used / info.total) * 100) }}%
+                    {% if info.used >= 1048576 %}
+                      {{ "%.1f"|format(info.used / 1048576) }} Go
                     {% else %}
-                      —
+                      {{ "%.1f"|format(info.used / 1024) }} Mo
                     {% endif %}
                   </td>
+                  <td>
+                    {% if info.total >= 1048576 %}
+                      {{ "%.1f"|format(info.total / 1048576) }} Go
+                    {% else %}
+                      {{ "%.1f"|format(info.total / 1024) }} Mo
+                    {% endif %}
+                  </td>
+                  <td>{{ info.pct }}%</td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         {% endif %}
 
-        <!-- STORAGE -->
         {% if category == "storage" %}
           <table class="table table-sm">
             <thead><tr><th>Nom</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
             <tbody>
               {% for name, info in values.items() %}
+                {% if ".pct" not in name %}
                 <tr>
                   <td>{{ name }}</td>
-                  <td>{{ info.used }}</td>
-                  <td>{{ info.total }}</td>
                   <td>
-                    {% if info.total and info.total > 0 %}
-                      {{ "%.1f"|format((info.used / info.total) * 100) }}%
+                    {% if info.used >= 1048576 %}
+                      {{ "%.1f"|format(info.used / 1048576) }} Go
                     {% else %}
-                      —
+                      {{ "%.1f"|format(info.used / 1024) }} Mo
                     {% endif %}
                   </td>
+                  <td>
+                    {% if info.total >= 1048576 %}
+                      {{ "%.1f"|format(info.total / 1048576) }} Go
+                    {% else %}
+                      {{ "%.1f"|format(info.total / 1024) }} Mo
+                    {% endif %}
+                  </td>
+                  <td>{{ info.pct }}%</td>
                 </tr>
+                {% endif %}
               {% endfor %}
             </tbody>
           </table>
         {% endif %}
-        
-        <!-- INTERFACES -->
+
         {% if category == "interfaces" %}
           <table class="table table-sm">
             <thead><tr><th>Interface</th><th>État</th></tr></thead>
@@ -143,7 +149,6 @@
           </table>
         {% endif %}
 
-        <!-- GRAPHE -->
         {% if category in ["cpu", "ram", "storage"] %}
           <canvas id="chart-{{ category }}" height="100"></canvas>
         {% endif %}
@@ -154,98 +159,137 @@
   <div class="alert alert-warning">Aucune métrique disponible pour cet hôte.</div>
 {% endif %}
 
-<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
-<!-- Script de génération des courbes -->
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const categories = ["cpu", "ram", "storage"];
-    const hostId = parseInt(document.body.dataset.hostId);
+document.addEventListener("DOMContentLoaded", function () {
+  const categories = ["cpu", "ram", "storage"];
+  const hostId = parseInt(document.body.dataset.hostId);
 
-    categories.forEach(category => {
-      fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
-        .then(resp => resp.json())
-        .then(data => {
-          if (!data || data.length === 0) {
-            console.warn(`[chart] Pas de données pour ${category}`);
-            return;
+  categories.forEach(category => {
+    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
+      .then(resp => resp.json())
+      .then(data => {
+        if (!data || data.length === 0) {
+          console.warn(`[chart] Pas de données pour ${category}`);
+          return;
+        }
+
+        const byMetric = {};
+        const metricMap = {};
+        let coreIndex = 1;
+
+        data.forEach(entry => {
+          let label = entry.metric;
+
+          // 🎯 CPU : renommer OID en "Core X"
+          if (category === "cpu") {
+            if (!metricMap[label]) {
+              metricMap[label] = `Core ${coreIndex++}`;
+            }
+            label = metricMap[label];
           }
 
-          const byMetric = {};
+          if (!byMetric[label]) {
+            byMetric[label] = [];
+          }
 
-          // Regrouper les valeurs par métrique
-          data.forEach(entry => {
-            if (!byMetric[entry.metric]) {
-              byMetric[entry.metric] = [];
+          byMetric[label].push({ x: entry.timestamp, y: entry.value });
+        });
+
+        // 🎯 RAM : ne garder que "pct", affiché comme "Physical memory"
+      if (category === "ram") {
+        const filtered = {};
+        if (byMetric["pct"]) {
+          filtered["Physical memory"] = byMetric["pct"];
+        }
+        Object.assign(byMetric, filtered);
+        for (const key of Object.keys(byMetric)) {
+          if (key !== "Physical memory") delete byMetric[key];
+        }
+      }
+
+        // 🎯 STORAGE : ne garder que les ".pct" et les renommer
+        if (category === "storage") {
+          const keepList = ["swap space", "memory buffers", "/"];
+          const filtered = {};
+
+          for (const metric of Object.keys(byMetric)) {
+            if (!metric.endsWith(".pct")) continue;
+            const label = metric.replace(/\.pct$/, "");
+
+            // Filtrer dynamiquement comme dans le backend
+            const name = label.toLowerCase();
+            const ignored = [
+              "virtual memory", "physical memory", "cached", "shared", "available",
+              "/run", "/dev/shm", "/tmp", "/lock", "/credentials", "/user"
+            ];
+
+            if (keepList.includes(label) || !ignored.some(sub => name.includes(sub))) {
+              filtered[label] = byMetric[metric];
             }
-            byMetric[entry.metric].push({
-              x: entry.timestamp,
-              y: entry.value
-            });
-          });
+          }
 
-          const isPercent = (category === 'ram' || category === 'storage');
+          // Appliquer le filtrage
+          Object.keys(byMetric).forEach(k => delete byMetric[k]);
+          Object.assign(byMetric, filtered);
+        }
 
-          const datasets = Object.entries(byMetric).map(([metric, points], index) => {
-            return {
-              label: category === 'cpu' ? `Core ${index + 1}` : metric,
-              data: points.map(p => ({
-                x: p.x,
-                y: isPercent ? (p.y > 1 ? Math.min(100, p.y / 1000) : p.y * 100) : p.y
-              })),
-              fill: false,
-              tension: 0.2
-            };
-          });
 
-          const yAxisOptions = {
-            beginAtZero: true,
-            max: (category === 'cpu' || category === 'ram' || category === 'storage') ? 100 : undefined,
-            title: {
-              display: true,
-              text: (category === 'cpu') ? 'Charge CPU (%)' : 'Utilisation (%)'
-            }
-          };
 
-          const ctx = document.getElementById(`chart-${category}`);
-          if (ctx) {
-            new Chart(ctx, {
-              type: 'line',
-              data: { datasets },
-              options: {
-                responsive: true,
-                plugins: {
-                  title: {
-                    display: true,
-                    text: `Historique ${category.toUpperCase()} (10 min)`
-                  },
-                  tooltip: {
-                    callbacks: {
-                      label: function (context) {
-                        return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
-                      }
+        const datasets = Object.entries(byMetric).map(([metric, points]) => ({
+          label: metric,
+          data: points.map(p => ({ x: p.x, y: p.y })),
+          fill: false,
+          tension: 0.2
+        }));
+
+        const yAxisOptions = {
+          beginAtZero: true,
+          max: 100,
+          title: {
+            display: true,
+            text: (category === 'cpu') ? 'Charge CPU (%)' : 'Utilisation (%)'
+          }
+        };
+
+        const ctx = document.getElementById(`chart-${category}`);
+        if (ctx) {
+          new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+              responsive: true,
+              plugins: {
+                title: {
+                  display: true,
+                  text: `Historique ${category.toUpperCase()} (10 min)`
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function (context) {
+                      return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
                     }
                   }
-                },
-                scales: {
-                  x: {
-                    type: 'time',
-                    time: { unit: 'minute' },
-                    title: { display: true, text: 'Temps' }
-                  },
-                  y: yAxisOptions
                 }
+              },
+              scales: {
+                x: {
+                  type: 'time',
+                  time: { unit: 'minute' },
+                  title: { display: true, text: 'Temps' }
+                },
+                y: yAxisOptions
               }
-            });
-          }
-        })
-        .catch(err => console.error(`Erreur ${category} :`, err));
-    });
+            }
+          });
+        }
+      })
+      .catch(err => console.error(`Erreur ${category} :`, err));
   });
+});
 </script>
-
 
 </body>
 {% endblock %}
