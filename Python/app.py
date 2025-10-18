@@ -17,7 +17,7 @@ from flask import (
     request, session, flash, g, jsonify, abort
 )
 from database import db
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # ----------------------------------------------------------------------------- 
@@ -26,7 +26,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
-DB_HOST = os.getenv("DB_HOST", "192.168.141.115")
+DB_HOST = os.getenv("DB_HOST", "192.168.1.25")
 DB_PORT = os.getenv("DB_PORT", "3002")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")
@@ -122,11 +122,13 @@ def get_down_hostnames():
 @app.before_request
 def load_user():
     g.user = session.get("username")
-    g.role = session.get("role", None)
+    g.role = session.get("role")
 
-@app.context_processor
-def inject_auth():
-    return {"current_user": g.user, "current_role": g.role}
+    if g.user:
+        user = User.query.filter_by(username=g.user, is_active=True).first()
+        if not user:
+            session.clear()
+            return redirect(url_for("login"))
 
 # -----------------------------------------------------------------------------
 # Routes
@@ -137,22 +139,35 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # Si l'utilisateur est déjà connecté via session
+    if session.get("username"):
+        return redirect(url_for("admin"))
+
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
+
         user = User.query.filter_by(username=u, is_active=True).first()
+
         if user and verify_password(user.password_hash, p):
+            # ✅ Authentification maison
             session["username"] = user.username
             session["role"] = user.role
             flash(f"Bienvenue, {user.username} !", "success")
-            return redirect(request.args.get("next") or url_for("admin"))
+
+            next_page = request.args.get("next")
+            return redirect(next_page or url_for("admin"))
+
         flash("Identifiants invalides.", "danger")
+
     return render_template("login.html")
 
 @app.route("/logout")
+@login_required
 def logout():
+    # ✅ Déconnexion maison
     session.clear()
-    flash("Déconnecté.", "info")
+    flash("Déconnecté avec succès.", "info")
     return redirect(url_for("login"))
 
 @app.route("/hosts")
@@ -462,6 +477,9 @@ def admin():
         alerts=alerts
     )
 
+from datetime import datetime
+from werkzeug.security import generate_password_hash
+
 @app.route("/users/new", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -471,7 +489,7 @@ def user_new():
         email = request.form.get("email", "").strip() or None
         password = request.form.get("password", "")
         role = request.form.get("role", "operator")
-        is_active = True if request.form.get("is_active") == "on" else False
+        is_active = request.form.get("is_active") == "on"
 
         # Validations simples
         if not username or not password:
@@ -497,15 +515,19 @@ def user_new():
             email=email,
             password_hash=pwd_hash,
             role=role,
-            is_active=is_active
+            is_active=is_active,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
+
         db.session.add(user)
         db.session.commit()
 
-        flash(f"Compte « {username} » créé avec succès.", "success")
-        return redirect(url_for("admin"))
+        flash(f"Compte « {username} » créé avec succès ✅", "success")
+        return redirect(url_for("user_list"))
 
     return render_template("user_new.html")
+
 
 # ---------- Groupes ----------
 @app.route("/groups/new", methods=["GET", "POST"])
@@ -674,6 +696,94 @@ def hosts_import():
 
     return render_template("hosts_import.html", report=report)
 
+@app.route("/health/<string:category>")
+@login_required
+def category_view(category):
+    """Affiche les dernières métriques pour une catégorie SNMP donnée (CPU, RAM, etc.)."""
+    valid_categories = ["cpu", "ram", "storage", "interfaces", "system"]
+    if category not in valid_categories:
+        flash("Catégorie inconnue", "warning")
+        return redirect(url_for("admin"))
+
+    since = datetime.utcnow() - timedelta(minutes=10)
+    rows = (
+        Measurement.query
+        .filter(Measurement.meta == category)
+        .filter(Measurement.created_at >= since)
+        .order_by(Measurement.created_at.desc())
+        .limit(500)
+        .all()
+    )
+
+    # Regrouper les données par host
+    grouped = {}
+    for r in rows:
+        if r.host_id not in grouped:
+            grouped[r.host_id] = {"host": r.host, "data": []}
+        grouped[r.host_id]["data"].append(r)
+
+    return render_template("health_category.html", category=category, grouped=grouped)
+
+@app.route("/users/<int:user_id>")
+@login_required
+def user_profile(user_id):
+    from models import User
+    user = User.query.get_or_404(user_id)
+    return render_template("user_profile.html", user=user)
+
+@app.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+def user_edit(user_id):
+    from models import User
+    user = User.query.get_or_404(user_id)
+
+    # Seuls les admins peuvent éditer
+    if not hasattr(current_user, "role") or current_user.role != "admin":
+        flash("Accès refusé : réservé aux administrateurs.", "danger")
+        return redirect(url_for("user_profile", user_id=user.id))
+
+    if request.method == "POST":
+        user.username = request.form.get("username", user.username)
+        user.email = request.form.get("email", user.email)
+        user.role = request.form.get("role", user.role)
+        user.is_active = "is_active" in request.form
+        db.session.commit()
+        flash("Profil mis à jour avec succès ✅", "success")
+        return redirect(url_for("user_list"))
+
+    return render_template("user_edit.html", user=user)
+
+@app.route("/users")
+@login_required
+@admin_required
+def user_list():
+    users = User.query.order_by(User.username.asc()).all()
+    return render_template("user_list.html", users=users)
+
+@app.route("/groups/<int:group_id>")
+@login_required
+def group_hosts(group_id):
+    from models import Group, Host
+
+    group = Group.query.get_or_404(group_id)
+    hosts = Host.query.filter_by(group_id=group.id).order_by(Host.hostname.asc()).all()
+
+    # Aucun champ "status" → on met des valeurs par défaut
+    total_hosts = len(hosts)
+    stats = {
+        "total_hosts": total_hosts,
+        "up": 0,
+        "down": 0,
+        "unknown": total_hosts
+    }
+
+    return render_template(
+        "admin.html",
+        hosts=hosts,
+        title=f"Groupe : {group.name}",
+        selected_group=group,
+        stats=stats
+    )
 # ---------- Hosts ----------
 @app.route("/hosts/new", methods=["GET", "POST"])
 @login_required
@@ -691,7 +801,7 @@ def host_new():
 
         # SNMP v2c (form)
         snmp_community = request.form.get("snmp_community", "public").strip()
-        snmp_categories = request.form.getlist("snmp_categories")  # récupère toutes les cases cochées
+        snmp_categories = request.form.getlist("snmp_categories")
 
         # Validations simples
         if not hostname:
@@ -789,6 +899,22 @@ def inject_global_state():
 
     return dict(hosts_down=hosts_down)
 
+
+def inject_auth():
+    return {"current_user": g.user, "current_role": g.role}
+
+def inject_groups():
+    try:
+        groups = Group.query.order_by(Group.name.asc()).all()
+    except Exception:
+        groups = []
+    return dict(groups=groups)
+
+def inject_globals():
+    from models import Group, Alert
+    groups = Group.query.order_by(Group.name.asc()).all()
+    recent_alerts = Alert.query.filter(Alert.created_at >= datetime.utcnow() - timedelta(hours=1)).count()
+    return dict(groups=groups, alert_count=recent_alerts)
 # -------------------------------------------------------
 # 🔄 Injection du cache d'état des hôtes dans les templates
 # -------------------------------------------------------
@@ -801,6 +927,10 @@ def inject_host_status_cache():
         # si poller pas encore initialisé
         return {'HOST_STATUS_CACHE': {}}
 
+@app.context_processor
+def inject_user():
+    """Rend current_user et current_role disponibles dans tous les templates."""
+    return dict(current_user=g.user, current_role=g.role)
 
 # -----------------------------------------------------------------------------
 # Lancement

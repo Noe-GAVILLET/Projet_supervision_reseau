@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0 text-capitalize">Health – {{ category }}</h4>
+    <a class="btn btn-outline-primary" href="{{ url_for('admin') }}">← Retour</a>
+  </div>
+
+  {% if grouped %}
+    {% for host_id, info in grouped.items() %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h5 class="card-title">{{ info.host.hostname }}</h5>
+          <p class="small text-muted">{{ info.host.ip }}:{{ info.host.port }}</p>
+          <ul class="list-group list-group-flush">
+            {% for r in info.data %}
+              <li class="list-group-item d-flex justify-content-between">
+                <span>{{ r.metric }}</span>
+                <span>{{ r.value }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-info">Aucune donnée récente pour {{ category }}.</div>
+  {% endif %}
+{% endblock %}

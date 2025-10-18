@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, abort, current_app
 from snmp_utils import get_metrics
 from db_utils import upsert_current_metric, open_alert
-from models_extra import Measurement
+from models import Measurement
 from datetime import datetime, timedelta
 from database import db
 

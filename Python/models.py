@@ -1,6 +1,8 @@
 # models.py
+from flask_login import UserMixin
 from datetime import datetime
 from database import db
+from datetime import datetime
 
 # Tables associatives
 host_tags = db.Table(
@@ -11,7 +13,7 @@ host_tags = db.Table(
     extend_existing=True
 )
 
-class User(db.Model):
+class User(db.Model, UserMixin):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -19,6 +21,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum("admin", "operator", name="role_enum"), nullable=False, default="operator")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Group(db.Model):
     __tablename__ = "groups"
@@ -46,7 +50,7 @@ class Host(db.Model):
     description = db.Column(db.String(255))
     ip = db.Column(db.String(45), nullable=False)
     port = db.Column(db.Integer, nullable=False, default=161)
-
+    status = db.Column(db.String(20), default="unknown")
     snmp_community = db.Column(db.String(128), nullable=True, default="public")
     snmp_categories = db.Column(db.JSON, nullable=True)
 

@@ -178,3 +178,4 @@ def start_scheduler(app, db, Host, Alert):
 
     t = threading.Thread(target=loop, daemon=True)
     t.start()
+

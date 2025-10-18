@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Gestion des profils utilisateurs</h3>
+    <a href="{{ url_for('user_new') }}" class="btn btn-primary btn-sm">+ Créer un compte</a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Nom d'utilisateur</th>
+            <th scope="col">Email</th>
+            <th scope="col">Rôle</th>
+            <th scope="col">Statut</th>
+            <th scope="col">Créé le</th>
+            <th scope="col" class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.email or "—" }}</td>
+            <td>
+              {% if user.role == "admin" %}
+                <span class="badge bg-danger">Admin</span>
+              {% else %}
+                <span class="badge bg-secondary">Opérateur</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if user.is_active %}
+                <span class="text-success">Actif</span>
+              {% else %}
+                <span class="text-danger">Inactif</span>
+              {% endif %}
+            </td>
+            <td>{{ user.created_at or "–" }}</td>
+            <td class="text-end">
+              <a href="{{ url_for('user_profile', user_id=user.id) }}" class="btn btn-sm btn-outline-info">Voir</a>
+              <a href="{{ url_for('user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Éditer</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

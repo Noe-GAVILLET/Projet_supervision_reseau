@@ -5,40 +5,19 @@ from models import CurrentMetric, Measurement, Alert
 import platform
 
 
-def check_host_reachability(db, host, Alert):
-    """
-    Vérifie la disponibilité de l’hôte :
-      - Si ping OK → True
-      - Si ping KO → crée une alerte critique (si pas déjà ouverte) + marque les interfaces Down
-    """
-    import platform
-    import subprocess
-
+def check_host_reachability(db, host, Alert, timeout=2):
+    """Teste la disponibilité réseau (ping) compatible Windows / Linux."""
     system = platform.system().lower()
-    cmd = ["ping", "-n", "1", "-w", "2000", host.ip] if system == "windows" else ["ping", "-c", "1", "-W", "2", host.ip]
+    if system == "windows":
+        cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), host.ip]
+    else:
+        cmd = ["ping", "-c", "1", "-W", str(timeout), host.ip]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=3, check=True)
-        return True  # ✅ Hôte joignable
-
-    except Exception:
-        # ⚠️ Si une alerte ping est déjà ouverte, ne pas en recréer
-        msg = f"Hôte {host.hostname} injoignable (ping échoué)"
-        existing = Alert.query.filter_by(host_id=host.id, severity="critical", message=msg, is_closed=False).first()
-
-        if not existing:
-            open_alert(db, Alert, host.id, severity="critical", message=msg)
-            print(f"[seuils] ❌ {msg}")
-        else:
-            print(f"[seuils] 🔁 Alerte ping déjà ouverte pour {host.hostname}, aucune nouvelle alerte.")
-
-        # 🔻 Marquer les interfaces comme Down
-        rows = CurrentMetric.query.filter_by(host_id=host.id).all()
-        for r in rows:
-            if r.meta == "interfaces":
-                r.value = "Down"
-        db.session.commit()
-
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"[reachability] Erreur ping {host.hostname}: {e}")
         return False
 
 

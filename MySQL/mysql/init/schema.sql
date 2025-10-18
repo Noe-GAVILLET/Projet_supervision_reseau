@@ -3,7 +3,6 @@
 --  Compatibilité : MySQL 8.x (InnoDB, utf8mb4)
 -- ============================================================================
 
--- Création base + paramètres
 CREATE DATABASE IF NOT EXISTS `SNMP`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
@@ -47,7 +46,6 @@ CREATE TABLE IF NOT EXISTS `templates` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(80) NOT NULL,
   `description` TEXT DEFAULT NULL,
-  -- Champs optionnels pour évoluer plus tard
   `snmp_version` ENUM('v1','v2c','v3') DEFAULT NULL,
   `params` JSON DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -67,7 +65,7 @@ CREATE TABLE IF NOT EXISTS `tags` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- Hosts (avec champs SNMP v2c : communauté + catégories JSON)
+-- Hosts (avec champ status)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `hosts` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -76,12 +74,15 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   `ip` VARCHAR(45) NOT NULL,
   `port` INT NOT NULL DEFAULT 161,
 
-  -- SNMP v2c uniquement
   `snmp_community` VARCHAR(128) DEFAULT 'public',
   `snmp_categories` JSON DEFAULT NULL,  -- ex: ["system","cpu","storage","interfaces"]
 
   `group_id` INT UNSIGNED DEFAULT NULL,
   `template_id` INT UNSIGNED DEFAULT NULL,
+
+  -- 🔹 Nouveau champ : statut de disponibilité
+  `status` ENUM('up','down','unknown') NOT NULL DEFAULT 'unknown',
+
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   KEY `idx_hosts_group_id` (`group_id`),
   KEY `idx_hosts_template_id` (`template_id`),
   KEY `idx_hosts_snmp_community` (`snmp_community`),
+  KEY `idx_hosts_status` (`status`),
 
   CONSTRAINT `fk_hosts_group`
     FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`)
@@ -99,9 +101,6 @@ CREATE TABLE IF NOT EXISTS `hosts` (
     FOREIGN KEY (`template_id`) REFERENCES `templates` (`id`)
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- (Optionnel) initialiser les catégories à "system" si tu le souhaites :
--- UPDATE `hosts` SET `snmp_categories` = JSON_ARRAY('system') WHERE `snmp_categories` IS NULL;
 
 -- ============================================================================
 -- Liaison Host <-> Tags (N:N)
@@ -120,28 +119,21 @@ CREATE TABLE IF NOT EXISTS `host_tags` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- Alertes (historique des alertes) + ACK / Résolution
+-- Alertes (historique des alertes)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `alerts` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `host_id` INT UNSIGNED DEFAULT NULL,
   `severity` ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
   `message` VARCHAR(255) NOT NULL,
-
-  -- Ack / Résolution
   `acknowledged_by` INT UNSIGNED DEFAULT NULL,
   `acknowledged_at` TIMESTAMP NULL DEFAULT NULL,
   `resolved_at` TIMESTAMP NULL DEFAULT NULL,
-
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (`id`),
   KEY `idx_alerts_created_at` (`created_at`),
   KEY `idx_alerts_severity` (`severity`),
   KEY `idx_alerts_host_id` (`host_id`),
-  KEY `idx_alerts_ack` (`acknowledged_at`),
-  KEY `idx_alerts_resolved` (`resolved_at`),
-
   CONSTRAINT `fk_alerts_host`
     FOREIGN KEY (`host_id`) REFERENCES `hosts` (`id`)
     ON UPDATE CASCADE ON DELETE SET NULL,
@@ -151,26 +143,25 @@ CREATE TABLE IF NOT EXISTS `alerts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- Mesures brutes (historisation générique)
+-- Mesures brutes
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `measurements` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `host_id` INT UNSIGNED NOT NULL,
   `oid` VARCHAR(200) NOT NULL,
-  `metric` VARCHAR(120) DEFAULT NULL,    -- ex: 'hrProcessorLoad', 'ifHCInOctets'
-  `value` VARCHAR(255) NOT NULL,         -- stocké en texte pour souplesse
+  `metric` VARCHAR(120) DEFAULT NULL,
+  `value` VARCHAR(255) NOT NULL,
   `ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `meta` JSON DEFAULT NULL,              -- ex: index interface, unit, allocUnit...
+  `meta` JSON DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_meas_host_ts` (`host_id`,`ts`),
-  KEY `idx_meas_metric_ts` (`metric`,`ts`),
   CONSTRAINT `fk_meas_host`
     FOREIGN KEY (`host_id`) REFERENCES `hosts` (`id`)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- Dernière valeur par OID (cache "courant" pour affichage rapide)
+-- Cache des valeurs actuelles
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `current_metrics` (
   `host_id` INT UNSIGNED NOT NULL,
@@ -187,7 +178,7 @@ CREATE TABLE IF NOT EXISTS `current_metrics` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- Journal des runs de poll (traçabilité / debug)
+-- Historique des runs de poll
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `poll_runs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -207,8 +198,6 @@ CREATE TABLE IF NOT EXISTS `poll_results` (
   `state` ENUM('ok','timeout','snmp_error','unreachable') NOT NULL DEFAULT 'ok',
   `error` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_poll_results_run` (`poll_run_id`),
-  KEY `idx_poll_results_host` (`host_id`),
   CONSTRAINT `fk_pollres_run`
     FOREIGN KEY (`poll_run_id`) REFERENCES `poll_runs` (`id`)
     ON UPDATE CASCADE ON DELETE CASCADE,
@@ -217,14 +206,10 @@ CREATE TABLE IF NOT EXISTS `poll_results` (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================================
--- Index supplémentaires utiles
--- ============================================================================
 CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 
 -- ============================================================================
--- (Optionnel) Utilisateur admin par défaut (hash SHA2 d'exemple)
---   ⚠ En production, stocke un hash fort (pbkdf2/bcrypt/argon2) géré par l'app.
+-- Utilisateur admin par défaut
 -- ============================================================================
 DELIMITER $$
 
