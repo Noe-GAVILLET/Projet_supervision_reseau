@@ -134,19 +134,54 @@ def get_metrics(ip: str, community: str, port: int, category: str):
         return results
 
     elif category == "interfaces":
-        descr = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.2", limit=10)
-        status = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.8", limit=10)
+        # OIDs SNMP standard
+        ifDescr = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.2")
+        ifOperStatus = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.8")
+
+        # Compteurs 64 bits (préférés si dispo)
+        ifInOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.31.1.1.1.6")
+        ifOutOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.31.1.1.1.10")
+
+        # Si non supportés → fallback 32 bits
+        if not ifInOctets:
+            ifInOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.10")
+        if not ifOutOctets:
+            ifOutOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.16")
 
         results = {}
-        for oid, name in descr.items():
-            idx = oid.split(".")[-1]
-            state = status.get(f"1.3.6.1.2.1.2.2.1.8.{idx}", "unknown")
-            results[name] = "up" if state == "1" else "down"
+
+        for descr_oid, name in ifDescr.items():
+            idx = descr_oid.split(".")[-1]
+            raw_status = str(ifOperStatus.get(f"1.3.6.1.2.1.2.2.1.8.{idx}", "2")).strip().lower()
+            raw_in = ifInOctets.get(f"1.3.6.1.2.1.31.1.1.1.6.{idx}", None) or ifInOctets.get(f"1.3.6.1.2.1.2.2.1.10.{idx}", "0")
+            raw_out = ifOutOctets.get(f"1.3.6.1.2.1.31.1.1.1.10.{idx}", None) or ifOutOctets.get(f"1.3.6.1.2.1.2.2.1.16.{idx}", "0")
+
+            # 🧠 Détection robuste de l’état (bien dans la boucle cette fois)
+            if "up" in raw_status:
+                state = "up"
+            elif "down" in raw_status:
+                state = "down"
+            elif raw_status.endswith("1") or raw_status == "1":
+                state = "up"
+            elif raw_status.endswith("2") or raw_status == "2":
+                state = "down"
+            else:
+                state = "unknown"
+
+            try:
+                in_oct = int(str(raw_in).split(":")[-1].strip())
+                out_oct = int(str(raw_out).split(":")[-1].strip())
+            except Exception:
+                in_oct, out_oct = 0, 0
+
+            results[name] = {
+                "state": state,
+                "in": in_oct,
+                "out": out_oct
+            }
+
         return results
 
-
-    else:
-        raise ValueError(f"Catégorie SNMP inconnue : {category}")
 
 def get_storage_metrics(ip, community="public", port=161):
     """

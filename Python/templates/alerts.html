@@ -110,4 +110,8 @@
       <div class="small text-muted">Le poller SNMP s’exécute toutes les 15 s — actualisez dans quelques instants.</div>
     </div>
   {% endif %}
+  <!-- 🔄 Rafraîchissement auto toutes les 10s -->
+  <script>
+    setInterval(() => location.reload(), 10000);
+  </script>
 {% endblock %}

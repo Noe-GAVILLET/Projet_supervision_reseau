@@ -9,6 +9,69 @@ from seuils import check_thresholds
 bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 
 
+# 🧠 Fonction utilitaire commune
+def store_measurements_for_category(db, host, cat, data):
+    """Gère l’insertion des mesures selon la catégorie SNMP."""
+    # --- Interfaces ---
+    if cat == "interfaces":
+        for iface_name, iface_info in data.items():
+            in_val = iface_info.get("in", 0)
+            out_val = iface_info.get("out", 0)
+            state = iface_info.get("state", "unknown")
+
+            # In/Out → enregistrement complet
+            db.session.add(Measurement(
+                host_id=host.id,
+                oid=f"{iface_name}.in",
+                metric=f"{iface_name}.in",
+                value=str(in_val),
+                meta=cat
+            ))
+            db.session.add(Measurement(
+                host_id=host.id,
+                oid=f"{iface_name}.out",
+                metric=f"{iface_name}.out",
+                value=str(out_val),
+                meta=cat
+            ))
+
+            # État actuel
+            upsert_current_metric(db, host.id, f"{iface_name}.state", iface_name, state, meta=cat)
+
+        return
+
+    # --- RAM / STORAGE ---
+    if cat in ("ram", "storage"):
+        for metric, val in data.items():
+            if isinstance(val, dict) and "used" in val and "total" in val:
+                pct = val.get("pct", 0)
+                label = metric.split(".")[0]
+
+                upsert_current_metric(db, host.id, label, label, pct, meta=cat)
+                db.session.add(Measurement(
+                    host_id=host.id,
+                    oid=metric,
+                    metric=label,
+                    value=str(pct),
+                    meta=cat
+                ))
+                check_thresholds(db, host, cat, metric, pct, Alert)
+        return
+
+    # --- CPU / SYSTEM / Autres ---
+    for metric, val in data.items():
+        upsert_current_metric(db, host.id, metric, metric, val, meta=cat)
+        db.session.add(Measurement(
+            host_id=host.id,
+            oid=metric,
+            metric=metric,
+            value=str(val),
+            meta=cat
+        ))
+        check_thresholds(db, host, cat, metric, val, Alert)
+
+
+# 🔹 POLL D’UN HOST UNIQUE
 @bp.route("/<int:host_id>", methods=["GET"])
 def poll_host_api(host_id):
     """
@@ -25,49 +88,19 @@ def poll_host_api(host_id):
     for cat in (host.snmp_categories or []):
         try:
             data = get_metrics(host.ip, host.snmp_community, host.port, cat)
-            print(f"[DEBUG POLL] Catégorie SNMP : {cat} → {len(data)} métriques")
             result[cat] = data
+            print(f"[DEBUG POLL] {host.hostname} → catégorie {cat} ({len(data)} métriques)")
 
-            for metric, val in data.items():
-                # 🔹 RAM / STORAGE : dictionnaire {used, total, pct}
-                if isinstance(val, dict) and "used" in val and "total" in val:
-                    pct = val.get("pct", 0)
-                    label = metric.split(".")[0]  # Ex: "Physical memory"
-
-                    upsert_current_metric(db, host.id, label, label, pct, meta=cat)
-
-                    db.session.add(Measurement(
-                        host_id=host.id,
-                        oid=metric,
-                        metric=label,
-                        value=str(pct),
-                        meta=cat
-                    ))
-
-                    # ✅ Vérifie les seuils pour cette métrique
-                    check_thresholds(db, host, cat, metric, pct, Alert)
-
-                # 🔹 Autres : CPU, interfaces, etc.
-                else:
-                    upsert_current_metric(db, host.id, metric, metric, val, meta=cat)
-
-                    db.session.add(Measurement(
-                        host_id=host.id,
-                        oid=metric,
-                        metric=metric,
-                        value=str(val),
-                        meta=cat
-                    ))
-
-                    # ✅ Vérifie les seuils pour CPU et autres
-                    check_thresholds(db, host, cat, metric, val, Alert)
+            store_measurements_for_category(db, host, cat, data)
 
         except Exception as e:
             msg = f"Erreur SNMP ({cat}): {e}"
+            print(f"[ERROR] {msg}")
             errors.append(msg)
             open_alert(db, Alert, host.id, severity="warning", message=msg)
 
     db.session.commit()
+
     return jsonify({
         "host": host.hostname,
         "ip": host.ip,
@@ -77,11 +110,10 @@ def poll_host_api(host_id):
     })
 
 
+# 🔹 POLL DE TOUS LES HOSTS
 @bp.route("/all", methods=["GET"])
 def poll_all_hosts():
-    """
-    Lance un poll SNMP sur tous les hôtes connus.
-    """
+    """Lance un poll SNMP sur tous les hôtes connus."""
     hosts = Host.query.all()
     summary = []
 
@@ -91,35 +123,9 @@ def poll_all_hosts():
             for cat in (h.snmp_categories or []):
                 data = get_metrics(h.ip, h.snmp_community, h.port, cat)
                 cat_metrics[cat] = data
-                print(f"[DEBUG POLL] {h.hostname} → catégorie {cat} ({len(data)} métriques)")
+                print(f"[DEBUG POLL] {h.hostname} → {cat} ({len(data)} métriques)")
 
-                for metric, val in data.items():
-                    if isinstance(val, dict) and "used" in val and "total" in val:
-                        pct = val.get("pct", 0)
-                        label = metric.split(".")[0]
-
-                        upsert_current_metric(db, h.id, label, label, pct, meta=cat)
-                        db.session.add(Measurement(
-                            host_id=h.id,
-                            oid=metric,
-                            metric=label,
-                            value=str(pct),
-                            meta=cat
-                        ))
-
-                        check_thresholds(db, h, cat, metric, pct, Alert)
-
-                    else:
-                        upsert_current_metric(db, h.id, metric, metric, val, meta=cat)
-                        db.session.add(Measurement(
-                            host_id=h.id,
-                            oid=metric,
-                            metric=metric,
-                            value=str(val),
-                            meta=cat
-                        ))
-
-                        check_thresholds(db, h, cat, metric, val, Alert)
+                store_measurements_for_category(db, h, cat, data)
 
             summary.append({
                 "host": h.hostname,
@@ -129,6 +135,7 @@ def poll_all_hosts():
 
         except Exception as e:
             msg = f"Erreur SNMP ({h.hostname}): {e}"
+            print(f"[ERROR] {msg}")
             open_alert(db, Alert, h.id, severity="warning", message=msg)
             summary.append({
                 "host": h.hostname,
@@ -140,7 +147,7 @@ def poll_all_hosts():
     return jsonify(summary)
 
 
-# 🔥 Historique des métriques
+# 🔥 HISTORIQUE DES MÉTRIQUES
 @bp.route("/metrics/<int:host_id>/<string:category>", methods=["GET"])
 def metrics_history(host_id, category):
     """
@@ -154,13 +161,14 @@ def metrics_history(host_id, category):
 
     since = datetime.utcnow() - timedelta(minutes=minutes)
 
+    # 🔧 plus souple pour les metas mal formatés (ex: "interfaces" avec guillemets)
     rows = (
         db.session.query(Measurement)
         .filter(Measurement.host_id == host_id)
-        .filter(Measurement.meta == category)
+        .filter(Measurement.meta.like(f"%{category}%"))
         .filter(Measurement.ts >= since)
         .order_by(Measurement.ts.asc())
-        .limit(500)
+        .limit(1000)
         .all()
     )
 
@@ -171,9 +179,12 @@ def metrics_history(host_id, category):
         except (ValueError, TypeError):
             continue
 
+        # 🟢 Utilise r.oid au lieu de r.metric pour les interfaces
+        metric_name = r.oid if category == "interfaces" else r.metric
+
         data.append({
             "timestamp": r.ts.isoformat(),
-            "metric": r.metric,
+            "metric": metric_name,
             "value": val
         })
 

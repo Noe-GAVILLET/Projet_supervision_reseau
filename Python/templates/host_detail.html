@@ -41,7 +41,15 @@
     </dl>
   </div>
 </div>
-
+<div class="mb-3 text-end">
+  <label for="time-range" class="form-label small text-muted">Période :</label>
+  <select id="time-range" class="form-select d-inline w-auto">
+    <option value="10m">10 min</option>
+    <option value="1h">1 heure</option>
+    <option value="24h">24 heures</option>
+    <option value="7d">7 jours</option>
+  </select>
+</div>
 <!-- Métriques SNMP -->
 {% if metrics %}
   {% for category, values in metrics.items() %}
@@ -160,25 +168,62 @@
         </table>
       {% endif %}
 
-        {% if category == "interfaces" %}
-          <table class="table table-sm">
-            <thead><tr><th>Interface</th><th>État</th></tr></thead>
-            <tbody>
-              {% for iface, state in values.items() %}
-                <tr>
-                  <td>{{ iface }}</td>
-                  <td>
-                    {% if state|string|lower in ["up", "1", "true"] %}
-                      <span class="badge bg-success">Up</span>
-                    {% else %}
-                      <span class="badge bg-danger">Down</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
+      {% if category == "interfaces" %}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Interface</th><th>État</th><th>Entrant</th><th>Sortant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for iface, info in values.items() %}
+              <tr>
+                <td>{{ iface }}</td>
+                <td>
+                  {% if info.state == "up" %}
+                    <span class="badge bg-success">Up</span>
+                  {% elif info.state == "down" %}
+                    <span class="badge bg-danger">Down</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Unknown</span>
+                  {% endif %}
+                </td>
+
+                <!-- Conversion lisible -->
+                <td>
+                  {% set in_val = info.in|float %}
+                  {% if in_val >= 1073741824 %}
+                    {{ "%.2f"|format(in_val / 1073741824) }} Go
+                  {% elif in_val >= 1048576 %}
+                    {{ "%.2f"|format(in_val / 1048576) }} Mo
+                  {% elif in_val >= 1024 %}
+                    {{ "%.2f"|format(in_val / 1024) }} Ko
+                  {% else %}
+                    {{ "%.0f"|format(in_val) }} o
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% set out_val = info.out|float %}
+                  {% if out_val >= 1073741824 %}
+                    {{ "%.2f"|format(out_val / 1073741824) }} Go
+                  {% elif out_val >= 1048576 %}
+                    {{ "%.2f"|format(out_val / 1048576) }} Mo
+                  {% elif out_val >= 1024 %}
+                    {{ "%.2f"|format(out_val / 1024) }} Ko
+                  {% else %}
+                    {{ "%.0f"|format(out_val) }} o
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <canvas id="chart-traffic" height="100"></canvas>
+      {% endif %}
+
+
 
         {% if category in ["cpu", "ram", "storage"] %}
           <canvas id="chart-{{ category }}" height="100"></canvas>
@@ -285,8 +330,85 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch(err => console.error(`Erreur ${category} :`, err));
   });
+  fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
+    .then(resp => resp.json())
+    .then(data => {
+      if (!data || data.length === 0) {
+        console.warn("[chart] Pas de données interfaces");
+        return;
+      }
+
+      // Regroupe IN/OUT par timestamp (toutes interfaces confondues)
+      const totalIn = {};
+      const totalOut = {};
+
+      data.forEach(entry => {
+        const ts = entry.timestamp;
+        if (entry.metric.endsWith(".in"))  totalIn[ts]  = (totalIn[ts]  || 0) + entry.value;
+        if (entry.metric.endsWith(".out")) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
+      });
+
+      // Convertit compteurs cumulés -> Mb/s (et ignore les resets / valeurs négatives)
+      function computeRates(map) {
+        const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+        const rates = [];
+        for (let i = 1; i < entries.length; i++) {
+          const tPrev = new Date(entries[i-1][0]);
+          const tCurr = new Date(entries[i][0]);
+          const dt = (tCurr - tPrev) / 1000;
+          if (dt <= 0) continue;
+          let delta = entries[i][1] - entries[i-1][1];
+          if (delta < 0) delta = 0; // reset/overflow → on ignore
+          const mbps = (delta * 8) / (dt * 1_000_000);
+          rates.push({ x: entries[i][0], y: mbps });
+        }
+        return rates;
+      }
+
+      const inData  = computeRates(totalIn);
+      const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y })); // ↧ outbound en négatif
+
+      const ctx = document.getElementById("chart-traffic");
+      if (!ctx) return;
+
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          datasets: [
+            { label: "Inbound",  data: inData,  borderColor: "blue",   fill: false, tension: 0.2 },
+            { label: "Outbound", data: outData, borderColor: "orange", fill: false, tension: 0.2 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: "Overall Network Traffic (Mbps)" },
+            tooltip: {
+              callbacks: {
+                // Affiche des valeurs positives même pour la série négative
+                label: c => `${c.dataset.label}: ${Math.abs(c.parsed.y).toFixed(2)} Mbps`
+              }
+            }
+          },
+          scales: {
+            x: { type: "time", time: { unit: "minute" }, title: { display: true, text: "Temps" } },
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: "Débit (Mbps)" },
+              // Graduations lisibles (valeurs absolues)
+              ticks: { callback: v => Math.abs(v) }
+            }
+          }
+        }
+      });
+    })
+    .catch(err => console.error("Erreur network traffic:", err));
+
 });
 </script>
-
+<!-- 🔄 Rafraîchissement auto toutes les 10s -->
+<script>
+  setInterval(() => location.reload(), 20000);
+</script>
 </body>
 {% endblock %}
