@@ -1,117 +1,115 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h4 class="mb-0">Surveillance en temps réel</h4>
-    <a class="btn btn-outline-primary" href="{{ url_for('admin') }}">← Retour aux hôtes</a>
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>Surveillance en temps réel</h4>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin') }}">← Retour aux hôtes</a>
   </div>
 
-  {% if alerts and alerts|length %}
-    <div class="card shadow-sm mb-3">
-      <div class="card-body">
-      <form method="get" class="row g-2 align-items-center">
-        <div class="col-md-3">
-          <label class="form-label mb-0 text-muted small">Filtrer par gravité</label>
-          <select name="severity" class="form-select" onchange="this.form.submit()">
-            <option value="">Toutes</option>
-            <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critique</option>
-            <option value="warning" {% if severity == 'warning' %}selected{% endif %}>Avertissement</option>
-            <option value="info" {% if severity == 'info' %}selected{% endif %}>Info</option>
-          </select>
-        </div>
+  <!-- 🔁 Auto-refresh toutes les 15 s -->
+  <script>
+    setInterval(() => {
+      window.location.reload();
+    }, 15000);
+  </script>
 
-        <div class="col-md-3">
-          <label class="form-label mb-0 text-muted small">Filtrer par statut</label>
-          <select name="status" class="form-select" onchange="this.form.submit()">
-            <option value="active" {% if status == 'active' %}selected{% endif %}>Actives</option>
-            <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Résolues</option>
-            <option value="all" {% if status == 'all' %}selected{% endif %}>Toutes</option>
-          </select>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label mb-0 text-muted small">Rechercher un host</label>
-          <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ex: router, debian..." />
-        </div>
-      </form>
-      </div>
+  <!-- 🔍 Filtres -->
+  <form method="get" class="row g-2 align-items-center mb-4">
+    <div class="col-md-3">
+      <label class="form-label mb-0">Filtrer par gravité</label>
+      <select name="severity" class="form-select" onchange="this.form.submit()">
+        <option value="">Toutes</option>
+        <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critique</option>
+        <option value="warning" {% if severity == 'warning' %}selected{% endif %}>Avertissement</option>
+        <option value="info" {% if severity == 'info' %}selected{% endif %}>Info</option>
+      </select>
     </div>
 
-    <div class="table-responsive">
-      <table class="table align-middle table-hover">
-        <thead class="table-light">
-          <tr>
-            <th>Horodatage (UTC)</th>
-            <th>Hôte</th>
-            <th>Gravité</th>
-            <th>Message</th>
-            <th class="text-end">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for a in alerts %}
-          <tr
-            class="{% if a.resolved_at %}
-                      table-success
-                    {% elif a.severity == 'critical' %}
-                      table-danger
-                    {% elif a.severity == 'warning' %}
-                      table-warning
-                    {% endif %}">
-            <td class="text-nowrap">
-              {{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
-              {% if a.resolved_at %}
-                <div class="small text-muted">
-                  ✅ Résolue : {{ a.resolved_at.strftime('%Y-%m-%d %H:%M:%S') }}
-                </div>
-              {% endif %}
-            </td>
-            <td>
-              {% if a.host %}
-                <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="fw-semibold">
-                  {{ a.host.hostname }}
-                </a>
-                <div class="small text-muted">{{ a.host.ip }}:{{ a.host.port }}</div>
-              {% else %}
-                <em class="text-muted">Inconnu</em>
-              {% endif %}
-            </td>
-            <td>
-              {% if a.resolved_at %}
-                <span class="badge bg-success">Rétablie</span>
-              {% elif a.severity == 'critical' %}
-                <span class="badge bg-danger">Critique</span>
-              {% elif a.severity == 'warning' %}
-                <span class="badge bg-warning text-dark">Avertissement</span>
-              {% else %}
-                <span class="badge bg-secondary">Info</span>
-              {% endif %}
-            </td>
-            <td>
-              {{ a.message }}
-              {% if a.resolved_at %}
-                <div class="small text-muted fst-italic">Le service est revenu à la normale</div>
-              {% endif %}
-            </td>
-            <td class="text-end">
-              {% if a.host %}
-                <a href="{{ url_for('host_view', host_id=a.host.id) }}" class="btn btn-sm btn-outline-primary">
-                  Voir le host
-                </a>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="col-md-3">
+      <label class="form-label mb-0">Filtrer par statut</label>
+      <select name="status" class="form-select" onchange="this.form.submit()">
+        <option value="all" {% if status == 'all' %}selected{% endif %}>Toutes</option>
+        <option value="active" {% if status == 'active' %}selected{% endif %}>Actives</option>
+        <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Résolues</option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label mb-0">Rechercher un host</label>
+      <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ex: serveur1" />
+    </div>
+
+    <div class="col-md-2 text-end">
+      <button type="submit" class="btn btn-primary w-100 mt-3 mt-md-0">Filtrer</button>
+    </div>
+  </form>
+
+  {% if alerts|length == 0 %}
+    <div class="alert alert-info">
+      <strong>Aucune alerte détectée.</strong><br>
+      Le poller SNMP s’exécute toutes les 15 secondes — actualisez dans quelques instants.
     </div>
   {% else %}
-    <div class="alert alert-info mt-3">
-      Aucune alerte détectée.  
-      <div class="small text-muted">Le poller SNMP s’exécute toutes les 15 s — actualisez dans quelques instants.</div>
-    </div>
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Horodatage (UTC)</th>
+          <th>Hôte</th>
+          <th>Gravité</th>
+          <th>Message</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in alerts %}
+          <tr class="
+            {% if alert.resolved_at %}
+              table-success
+            {% elif alert.severity == 'critical' %}
+              table-danger
+            {% elif alert.severity == 'warning' %}
+              table-warning
+            {% else %}
+              table-info
+            {% endif %}
+          ">
+            <td>
+              {{ alert.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+              {% if alert.resolved_at %}
+                <br><small class="text-success">✅ Résolue : {{ alert.resolved_at.strftime("%Y-%m-%d %H:%M:%S") }}</small>
+              {% endif %}
+            </td>
+            <td>
+              {% if alert.host %}
+                <a href="{{ url_for('host_view', host_id=alert.host.id) }}">
+                  {{ alert.host.hostname }}
+                </a><br>
+                <small class="text-muted">{{ alert.host.ip }}:{{ alert.host.port }}</small>
+              {% else %}
+                <em class="text-muted">Hôte supprimé</em>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge 
+                {% if alert.severity == 'critical' %}bg-danger
+                {% elif alert.severity == 'warning' %}bg-warning text-dark
+                {% else %}bg-info text-dark{% endif %}
+              ">
+                {{ alert.severity|capitalize }}
+              </span>
+            </td>
+            <td>{{ alert.message }}</td>
+            <td>
+              {% if alert.resolved_at %}
+                <span class="text-success fw-bold">Rétablie</span>
+              {% else %}
+                <span class="text-danger fw-bold">Active</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   {% endif %}
-  <!-- 🔄 Rafraîchissement auto toutes les 10s -->
-  <script>
-    setInterval(() => location.reload(), 10000);
-  </script>
+</div>
 {% endblock %}

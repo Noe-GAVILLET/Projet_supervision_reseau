@@ -240,7 +240,7 @@ def hosts_search():
 def alerts():
     severity = request.args.get("severity")
     q = request.args.get("q")
-    status = request.args.get("status", "active")  # nouveau filtre (active / resolved / all)
+    status = request.args.get("status", "all")  
 
     query = Alert.query.join(Host, isouter=True)
 
@@ -485,16 +485,19 @@ from werkzeug.security import generate_password_hash
 @login_required
 @admin_required
 def user_new():
+    from models import User
+
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip() or None
         password = request.form.get("password", "")
         role = request.form.get("role", "operator")
-        is_active = request.form.get("is_active") == "on"
+        is_active = "is_active" in request.form
+        receive_alerts = "receive_alerts" in request.form  # ✅ nouveau champ
 
-        # Validations simples
+        # Validation de base
         if not username or not password:
-            flash("Utilisateur et mot de passe sont obligatoires.", "danger")
+            flash("Nom d’utilisateur et mot de passe sont obligatoires.", "danger")
             return render_template("user_new.html")
 
         if role not in ("admin", "operator"):
@@ -517,6 +520,7 @@ def user_new():
             password_hash=pwd_hash,
             role=role,
             is_active=is_active,
+            receive_alerts=receive_alerts,  # ✅ nouveau champ
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -738,8 +742,8 @@ def user_edit(user_id):
     from models import User
     user = User.query.get_or_404(user_id)
 
-    # Seuls les admins peuvent éditer
-    if not hasattr(current_user, "role") or current_user.role != "admin":
+    # Seuls les administrateurs peuvent modifier un utilisateur
+    if g.role != "admin":
         flash("Accès refusé : réservé aux administrateurs.", "danger")
         return redirect(url_for("user_profile", user_id=user.id))
 
@@ -748,6 +752,9 @@ def user_edit(user_id):
         user.email = request.form.get("email", user.email)
         user.role = request.form.get("role", user.role)
         user.is_active = "is_active" in request.form
+        user.receive_alerts = "receive_alerts" in request.form  # ✅ nouveau champ
+        user.updated_at = datetime.utcnow()
+
         db.session.commit()
         flash("Profil mis à jour avec succès ✅", "success")
         return redirect(url_for("user_list"))
