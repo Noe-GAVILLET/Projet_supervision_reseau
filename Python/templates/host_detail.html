@@ -330,79 +330,103 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch(err => console.error(`Erreur ${category} :`, err));
   });
-  fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
-    .then(resp => resp.json())
-    .then(data => {
-      if (!data || data.length === 0) {
-        console.warn("[chart] Pas de données interfaces");
-        return;
+fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
+  .then(resp => resp.json())
+  .then(data => {
+    if (!data || data.length === 0) {
+      console.warn("[chart] Pas de données interfaces");
+      return;
+    }
+
+    // 🟢 Somme globale du trafic entrant/sortant (toutes interfaces)
+    const totalIn = {};
+    const totalOut = {};
+
+    data.forEach(entry => {
+      const ts = entry.timestamp;
+      if (entry.metric.endsWith(".in"))  totalIn[ts]  = (totalIn[ts]  || 0) + entry.value;
+      if (entry.metric.endsWith(".out")) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
+    });
+
+    // 🧮 Calcul des débits (octets -> Mbps)
+    function computeRates(map) {
+      const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+      const rates = [];
+      for (let i = 1; i < entries.length; i++) {
+        const tPrev = new Date(entries[i - 1][0]);
+        const tCurr = new Date(entries[i][0]);
+        const dt = (tCurr - tPrev) / 1000;
+        if (dt <= 0) continue;
+
+        let delta = entries[i][1] - entries[i - 1][1];
+        if (delta < 0) delta = 0; // reset/overflow SNMP
+        const mbps = (delta * 8) / (dt * 1_000_000);
+        rates.push({ x: entries[i][0], y: mbps });
       }
+      return rates;
+    }
 
-      // Regroupe IN/OUT par timestamp (toutes interfaces confondues)
-      const totalIn = {};
-      const totalOut = {};
+    const inData  = computeRates(totalIn);
+    const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y })); // Out en négatif
 
-      data.forEach(entry => {
-        const ts = entry.timestamp;
-        if (entry.metric.endsWith(".in"))  totalIn[ts]  = (totalIn[ts]  || 0) + entry.value;
-        if (entry.metric.endsWith(".out")) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
-      });
+    // 🎨 Création du graphique Chart.js
+    const ctx = document.getElementById("chart-traffic");
+    if (!ctx) return;
 
-      // Convertit compteurs cumulés -> Mb/s (et ignore les resets / valeurs négatives)
-      function computeRates(map) {
-        const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
-        const rates = [];
-        for (let i = 1; i < entries.length; i++) {
-          const tPrev = new Date(entries[i-1][0]);
-          const tCurr = new Date(entries[i][0]);
-          const dt = (tCurr - tPrev) / 1000;
-          if (dt <= 0) continue;
-          let delta = entries[i][1] - entries[i-1][1];
-          if (delta < 0) delta = 0; // reset/overflow → on ignore
-          const mbps = (delta * 8) / (dt * 1_000_000);
-          rates.push({ x: entries[i][0], y: mbps });
-        }
-        return rates;
-      }
-
-      const inData  = computeRates(totalIn);
-      const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y })); // ↧ outbound en négatif
-
-      const ctx = document.getElementById("chart-traffic");
-      if (!ctx) return;
-
-      new Chart(ctx, {
-        type: "line",
-        data: {
-          datasets: [
-            { label: "Inbound",  data: inData,  borderColor: "blue",   fill: false, tension: 0.2 },
-            { label: "Outbound", data: outData, borderColor: "orange", fill: false, tension: 0.2 }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: { display: true, text: "Overall Network Traffic (Mbps)" },
-            tooltip: {
-              callbacks: {
-                // Affiche des valeurs positives même pour la série négative
-                label: c => `${c.dataset.label}: ${Math.abs(c.parsed.y).toFixed(2)} Mbps`
-              }
-            }
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: "Inbound (Mbps)",
+            data: inData,
+            borderColor: "rgba(0, 200, 83, 0.9)",
+            backgroundColor: "rgba(0, 200, 83, 0.1)",
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2
           },
-          scales: {
-            x: { type: "time", time: { unit: "minute" }, title: { display: true, text: "Temps" } },
-            y: {
-              beginAtZero: true,
-              title: { display: true, text: "Débit (Mbps)" },
-              // Graduations lisibles (valeurs absolues)
-              ticks: { callback: v => Math.abs(v) }
+          {
+            label: "Outbound (Mbps)",
+            data: outData,
+            borderColor: "rgba(244, 67, 54, 0.9)",
+            backgroundColor: "rgba(244, 67, 54, 0.1)",
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        stacked: false,
+        plugins: {
+          legend: { position: "top" },
+          title: { display: true, text: "Overall Network Traffic (Mbps)" },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
             }
           }
+        },
+        scales: {
+          x: {
+            type: "time",
+            time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
+            title: { display: true, text: "Horodatage" }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "Débit (Mbps)" },
+            ticks: { callback: (v) => Math.abs(v) }
+          }
         }
-      });
-    })
-    .catch(err => console.error("Erreur network traffic:", err));
+      }
+    });
+  })
+  .catch(err => console.error("Erreur network traffic:", err));
+
 
 });
 </script>

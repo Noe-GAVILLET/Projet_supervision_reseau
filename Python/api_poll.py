@@ -12,14 +12,15 @@ bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 # 🧠 Fonction utilitaire commune
 def store_measurements_for_category(db, host, cat, data):
     """Gère l’insertion des mesures selon la catégorie SNMP."""
-    # --- Interfaces ---
+
+    # --- 🔹 INTERFACES ---
     if cat == "interfaces":
         for iface_name, iface_info in data.items():
-            in_val = iface_info.get("in", 0)
-            out_val = iface_info.get("out", 0)
+            in_val = iface_info.get("in_mbps", 0.0)
+            out_val = iface_info.get("out_mbps", 0.0)
             state = iface_info.get("state", "unknown")
 
-            # In/Out → enregistrement complet
+            # Enregistre les débits instantanés (en Mbps)
             db.session.add(Measurement(
                 host_id=host.id,
                 oid=f"{iface_name}.in",
@@ -35,12 +36,12 @@ def store_measurements_for_category(db, host, cat, data):
                 meta=cat
             ))
 
-            # État actuel
+            # Enregistre l’état de l’interface
             upsert_current_metric(db, host.id, f"{iface_name}.state", iface_name, state, meta=cat)
 
         return
 
-    # --- RAM / STORAGE ---
+    # --- 🔹 RAM / STORAGE ---
     if cat in ("ram", "storage"):
         for metric, val in data.items():
             if isinstance(val, dict) and "used" in val and "total" in val:
@@ -58,7 +59,7 @@ def store_measurements_for_category(db, host, cat, data):
                 check_thresholds(db, host, cat, metric, pct, Alert)
         return
 
-    # --- CPU / SYSTEM / Autres ---
+    # --- 🔹 CPU / SYSTEM / Autres ---
     for metric, val in data.items():
         upsert_current_metric(db, host.id, metric, metric, val, meta=cat)
         db.session.add(Measurement(
@@ -69,6 +70,7 @@ def store_measurements_for_category(db, host, cat, data):
             meta=cat
         ))
         check_thresholds(db, host, cat, metric, val, Alert)
+
 
 
 # 🔹 POLL D’UN HOST UNIQUE
