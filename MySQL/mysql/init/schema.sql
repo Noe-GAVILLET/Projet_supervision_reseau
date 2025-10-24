@@ -209,9 +209,7 @@ CREATE TABLE IF NOT EXISTS `poll_results` (
 
 CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 
--- ============================================================================
--- Utilisateur admin par défaut
--- ============================================================================
+
 DELIMITER $$
 
 INSERT INTO `users` (`username`, `email`, `password_hash`, `role`)
