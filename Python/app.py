@@ -260,10 +260,7 @@ def alerts():
     # sinon ("all") → pas de filtre
 
     # --- Tri : actives en haut, puis résolues ---
-    alerts = query.order_by(
-        case((Alert.resolved_at == None, 0), else_=1),
-        Alert.created_at.desc()
-    ).all()
+    alerts = query.order_by(Alert.created_at.desc()).all()
 
     return render_template("alerts.html", alerts=alerts, severity=severity, q=q, status=status)
 
@@ -433,50 +430,58 @@ def host_delete(host_id: int):
 @app.route("/admin")
 @login_required
 def admin():
+    from models import Host, Alert
+    from sqlalchemy import or_
+
+    # Liste complète des hôtes
     hosts = Host.query.order_by(Host.hostname.asc()).all()
+    
 
-    down_hosts = []
-    up_hosts = []
-    unknown_hosts = []
+    # Comptages par statut
+    total_hosts = len(hosts)
+    hosts_up = Host.query.filter_by(status="up").count()
+    hosts_down = Host.query.filter_by(status="down").count()
+    hosts_warning = Host.query.filter_by(status="warning").count()
+    hosts_unknown = Host.query.filter(
+        or_(Host.status == None, Host.status == "unknown")
+    ).count()
 
-    for h in hosts:
-        if h.snmp_categories:
-            if h.hostname in get_down_hostnames():  # Utilise ta logique existante ici
-                down_hosts.append(h)
-            else:
-                up_hosts.append(h)
-        else:
-            unknown_hosts.append(h)
-
-    # Préparer les stats
-    stats = {
-        "total_hosts": len(hosts),
-        "up": len(up_hosts),
-        "down": len(down_hosts),
-        "unknown": len(unknown_hosts),
-        "by_category": {}
-    }
-
+    # Répartition par catégorie SNMP
+    by_category = {}
     for h in hosts:
         if not h.snmp_categories:
             continue
         for cat in h.snmp_categories:
-            stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
+            by_category[cat] = by_category.get(cat, 0) + 1
 
-    # Alertes récentes (si modèle disponible)
+    # Dernières alertes (optionnel)
     try:
         alerts = Alert.query.order_by(Alert.created_at.desc()).limit(5).all()
-    except:
+    except Exception:
         alerts = []
+
+    # Préparation du dictionnaire de stats (si besoin ailleurs)
+    stats = {
+        "total_hosts": total_hosts,
+        "up": hosts_up,
+        "down": hosts_down,
+        "warning": hosts_warning,
+        "unknown": hosts_unknown,
+        "by_category": by_category,
+    }
 
     return render_template(
         "admin.html",
         hosts=hosts,
-        down_hosts=[h.hostname for h in down_hosts],
+        total_hosts=total_hosts,
+        hosts_up=hosts_up,
+        hosts_down=hosts_down,
+        hosts_warning=hosts_warning,
+        hosts_unknown=hosts_unknown,
         stats=stats,
-        stats_json=[stats["up"], stats["down"], stats["unknown"]],
         alerts=alerts
     )
+
 
 from datetime import datetime
 from werkzeug.security import generate_password_hash
@@ -954,4 +959,11 @@ def inject_severity_utils():
 # Lancement
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        with app.app_context():
+            from poller import start_scheduler
+            start_scheduler(app, db, Host, Alert)
+    else:
+        print("[poller] ⏭️ Scheduler non démarré (process reloader Flask)")
+
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)

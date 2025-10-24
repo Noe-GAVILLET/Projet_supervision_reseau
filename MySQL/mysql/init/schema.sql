@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   `snmp_categories` JSON DEFAULT NULL,  -- ex: ["system","cpu","storage","interfaces"]
   `group_id` INT UNSIGNED DEFAULT NULL,
   `template_id` INT UNSIGNED DEFAULT NULL,
-  `status` ENUM('up','down','unknown') NOT NULL DEFAULT 'unknown',
+  `status` ENUM('up','down','warning','unknown') NOT NULL DEFAULT 'unknown',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

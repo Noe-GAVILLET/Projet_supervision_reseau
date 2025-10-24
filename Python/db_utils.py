@@ -96,9 +96,16 @@ def upsert_current_metric(db, host_id, oid, metric, value, meta=None):
 
 def open_alert(db, Alert, host_id, severity, message):
     """
-    Crée une alerte si aucune alerte identique n'est déjà ouverte,
-    puis envoie un mail aux destinataires configurés.
+    Crée une alerte si aucune alerte identique (même host, même severité, même message) n'est déjà ouverte,
+    puis envoie un e-mail formaté avec hostname + IP.
     """
+    from models import Host
+
+    host = Host.query.get(host_id)
+    hostname = host.hostname if host else f"Host#{host_id}"
+    host_ip = host.ip if host else "IP inconnue"
+
+    # Évite le spam: pas de doublon si même alerte déjà ouverte
     existing = Alert.query.filter_by(
         host_id=host_id,
         severity=severity,
@@ -106,57 +113,71 @@ def open_alert(db, Alert, host_id, severity, message):
         acknowledged_at=None,
         resolved_at=None
     ).first()
-
     if existing:
-        return
+        return existing
 
-    alert = Alert(host_id=host_id, severity=severity, message=message)
+    alert = Alert(
+        host_id=host_id,
+        severity=severity,
+        message=message,
+        created_at=datetime.utcnow()
+    )
     db.session.add(alert)
     db.session.commit()
 
-    print(f"[alerte] 🔔 Nouvelle alerte {severity.upper()} sur host_id={host_id} : {message}")
+    print(f"[alerte] 🔔 Nouvelle alerte {severity.upper()} sur {hostname} ({host_ip}) : {message}")
 
-    subject = f"[{severity.upper()}] Alerte SNMP sur l'hôte {host_id}"
+    # ✅ Sujet/texte clairs avec hostname + IP
+    subject = f"[{severity.upper()}] {hostname} ({host_ip}) — Alerte SNMP"
     body = (
         "Une nouvelle alerte a été générée :\n\n"
         f"Gravité : {severity.upper()}\n"
-        f"Hôte ID : {host_id}\n"
-        f"Détails : {message}\n\n"
+        f"Hôte : {hostname} ({host_ip})\n"
+        f"Détails : {message}\n"
     )
+    # Envoi aux abonnés (ou fallback admin) via la fonction locale
     send_alert_email(subject, body)
+    return alert
 
 
-def resolve_alert(db, Alert, host_id, category, message_contains=None):
+def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
     """
-    Marque comme résolues les alertes du host pour la catégorie donnée
-    si elles ne sont plus valides, puis notifie par email.
+    Marque comme résolues les alertes ouvertes de ce host (optionnellement filtrées par 'message_contains'),
+    puis envoie un e-mail de rétablissement générique (pas “CPU”), avec hostname + IP.
     """
-    query = Alert.query.filter(
+    from models import Host
+
+    host = Host.query.get(host_id)
+    hostname = host.hostname if host else f"Host#{host_id}"
+    host_ip = host.ip if host else "IP inconnue"
+
+    q = Alert.query.filter(
         Alert.host_id == host_id,
         Alert.resolved_at.is_(None)
     )
-
     if message_contains:
-        query = query.filter(Alert.message.like(f"%{message_contains}%"))
+        q = q.filter(Alert.message.like(f"%{message_contains}%"))
 
-    alerts = query.all()
+    alerts = q.all()
     if not alerts:
         return
 
-    for alert in alerts:
-        alert.resolved_at = datetime.utcnow()
-        db.session.add(alert)
-
-        # Mail de rétablissement
-        subject = f"[RÉTABLIE] Alerte SNMP sur {category.upper()} - hôte {host_id}"
-        body = (
-            f"L'alerte suivante a été résolue :\n\n"
-            f"Hôte ID : {host_id}\n"
-            f"Catégorie : {category.upper()}\n"
-            f"Détails : {alert.message}\n\n"
-            f"Le service est revenu à la normale à {alert.resolved_at}."
-        )
-        send_alert_email(subject, body)
-
+    now = datetime.utcnow()
+    for a in alerts:
+        a.resolved_at = now
+        db.session.add(a)
     db.session.commit()
-    print(f"[alerte] ✅ {len(alerts)} alerte(s) résolue(s) pour {category} sur host {host_id}")
+
+    # ✅ Mail de rétablissement générique (plus de “Catégorie : CPU” forcée)
+    subject = f"[RÉTABLIE] {hostname} ({host_ip}) — Alerte résolue"
+    details = "\n".join(f"- {a.severity.upper()} : {a.message}" for a in alerts)
+    cat_line = f"Catégorie : {category}\n" if category else ""
+    body = (
+        "Les alertes suivantes ont été résolues :\n\n"
+        f"Hôte : {hostname} ({host_ip})\n"
+        f"{cat_line}"
+        f"{details}\n\n"
+        f"Rétablissement : {now} UTC"
+    )
+    send_alert_email(subject, body)
+    print(f"[alerte] ✅ {len(alerts)} alerte(s) résolue(s) pour host {host_id}")

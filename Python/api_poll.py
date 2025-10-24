@@ -8,6 +8,8 @@ from seuils import check_thresholds
 
 bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 
+SNMP_DOWN_MSG = "SNMP injoignable (timeout)"
+SNMP_UP_MSG = "SNMP rétabli ✅"
 
 # =====================================================================
 # 🔹 Fonction utilitaire : enregistre les mesures d’une catégorie SNMP
@@ -22,7 +24,6 @@ def store_measurements_for_category(db, host, cat, data):
             out_val = iface_info.get("out_mbps", 0.0)
             state = iface_info.get("state", "unknown")
 
-            # Débits (en Mbps)
             db.session.add(Measurement(
                 host_id=host.id,
                 oid=f"{iface_name}.in",
@@ -38,9 +39,8 @@ def store_measurements_for_category(db, host, cat, data):
                 meta=cat
             ))
 
-            # État de l’interface
+            # État interface
             upsert_current_metric(db, host.id, f"{iface_name}.state", iface_name, state, meta=cat)
-
         return
 
     # --- 🔸 RAM / STORAGE ---
@@ -86,9 +86,11 @@ def poll_host_api(host_id):
     result = {}
     errors = []
 
+    previous_status = host.status or "unknown"
+    reachable = True  # pas de test ping ici, juste SNMP
+
     for cat in (host.snmp_categories or []):
         try:
-            # 🔹 Récupère le nom du groupe lié (linux / pfsense / windows)
             group_name = host.group.name if host.group else None
 
             data = get_metrics(
@@ -101,25 +103,44 @@ def poll_host_api(host_id):
             )
 
             result[cat] = data
-            print(f"[DEBUG POLL] {host.hostname} [{group_name or 'default'}] → {cat} ({len(data)} métriques)")
+            print(f"[API POLL] {host.hostname} [{group_name or 'default'}] → {cat} ({len(data)} métriques)")
 
             store_measurements_for_category(db, host, cat, data)
 
         except Exception as e:
             msg = f"Erreur SNMP ({cat}) sur {host.hostname}: {e}"
-            print(f"[ERROR] {msg}")
+            print(f"[API POLL] ⚠️ {msg}")
             errors.append(msg)
-            open_alert(db, Alert, host.id, severity="warning", message=msg)
+            reachable = False
+
+            # SNMP DOWN → alerte unique + bascule status
+            if host.status != "down":
+                host.status = "down"
+                db.session.commit()
+                open_alert(db, Alert, host.id, "critical", f"{SNMP_DOWN_MSG} sur {host.hostname} ({host.ip})")
+                print(f"[API POLL] ❌ {host.hostname} DOWN")
+            else:
+                print(f"[API POLL] 🔁 {host.hostname} toujours DOWN — pas d'alerte répétée")
+            break  # stoppe les autres catégories
+
+    # --- Si au moins une catégorie a fonctionné, on repasse UP ---
+    if reachable and any(result.values()):
+        if host.status != "up":
+            host.status = "up"
+            db.session.commit()
+            open_alert(db, Alert, host.id, "info", f"{SNMP_UP_MSG} sur {host.hostname} ({host.ip})")
+            print(f"[API POLL] ✅ {host.hostname} UP (SNMP rétabli)")
 
     db.session.commit()
 
     return jsonify({
         "host": host.hostname,
         "ip": host.ip,
-        "group": group_name,
+        "group": host.group.name if host.group else None,
         "categories": host.snmp_categories,
         "metrics": result,
         "errors": errors,
+        "status": host.status
     })
 
 
@@ -137,34 +158,49 @@ def poll_all_hosts():
             cat_metrics = {}
 
             for cat in (h.snmp_categories or []):
-                data = get_metrics(
-                    h.ip,
-                    h.snmp_community,
-                    h.port,
-                    cat,
-                    host_id=h.id,
-                    group_name=group_name
-                )
-                cat_metrics[cat] = data
+                try:
+                    data = get_metrics(
+                        h.ip,
+                        h.snmp_community,
+                        h.port,
+                        cat,
+                        host_id=h.id,
+                        group_name=group_name
+                    )
+                    cat_metrics[cat] = data
+                    print(f"[API POLL] {h.hostname} → {cat} ({len(data)} métriques)")
+                    store_measurements_for_category(db, h, cat, data)
+                except Exception as e_cat:
+                    print(f"[API POLL] ⚠️ Erreur SNMP {h.hostname} ({cat}): {e_cat}")
+                    if h.status != "down":
+                        h.status = "down"
+                        db.session.commit()
+                        open_alert(db, Alert, h.id, "critical",
+                                   f"{SNMP_DOWN_MSG} sur {h.hostname} ({h.ip})")
+                    else:
+                        print(f"[API POLL] 🔁 {h.hostname} toujours DOWN — pas d'alerte répétée")
+                    break
 
-                print(f"[DEBUG POLL] {h.hostname} [{group_name or 'default'}] → {cat} ({len(data)} métriques)")
-                store_measurements_for_category(db, h, cat, data)
+            if cat_metrics:
+                if h.status != "up":
+                    h.status = "up"
+                    db.session.commit()
+                    open_alert(db, Alert, h.id, "info", f"{SNMP_UP_MSG} sur {h.hostname} ({h.ip})")
 
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
                 "group": group_name,
-                "metrics": cat_metrics
+                "metrics": cat_metrics,
+                "status": h.status
             })
 
         except Exception as e:
-            msg = f"Erreur SNMP sur {h.hostname}: {e}"
-            print(f"[ERROR] {msg}")
-            open_alert(db, Alert, h.id, severity="warning", message=msg)
+            print(f"[API POLL] ⚠️ Erreur globale {h.hostname}: {e}")
+            open_alert(db, Alert, h.id, "warning", f"Erreur globale: {e}")
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
-                "group": group_name,
                 "error": str(e)
             })
 
@@ -177,10 +213,7 @@ def poll_all_hosts():
 # =====================================================================
 @bp.route("/metrics/<int:host_id>/<string:category>", methods=["GET"])
 def metrics_history(host_id, category):
-    """
-    Ex: GET /api/poll/metrics/1/cpu?minutes=5
-    Retourne l'historique des métriques pour un host et une catégorie SNMP.
-    """
+    """Retourne l'historique des métriques pour un host et une catégorie SNMP."""
     try:
         minutes = int(request.args.get("minutes", 5))
     except ValueError:
