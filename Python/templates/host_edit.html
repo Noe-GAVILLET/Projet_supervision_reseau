@@ -25,17 +25,22 @@
         <input name="description" class="form-control" value="{{ host.description or '' }}" />
       </div>
 
+      <!-- Groupe / Type d’équipement -->
       <div class="col-md-6">
-        <label class="form-label">Groupe</label>
+        <label class="form-label">Groupe / Type d’équipement</label>
         <div class="d-flex gap-2">
           <select name="group_id" class="form-select">
             <option value="">— Aucun —</option>
+            <option value="linux" {% if host.group_id == 'linux' %}selected{% endif %}>Linux</option>
+            <option value="pfsense" {% if host.group_id == 'pfsense' %}selected{% endif %}>pfSense</option>
+            <option value="windows" {% if host.group_id == 'windows' %}selected{% endif %}>Windows</option>
             {% for g in groups %}
               <option value="{{ g.id }}" {% if host.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
             {% endfor %}
           </select>
           <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
         </div>
+        <div class="form-text">Modifie le type d’OIDs SNMP collectés pour cet équipement.</div>
       </div>
 
       <!-- Communauté SNMP -->

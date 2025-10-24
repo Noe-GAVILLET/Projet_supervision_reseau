@@ -9,18 +9,20 @@ from seuils import check_thresholds
 bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 
 
-# 🧠 Fonction utilitaire commune
+# =====================================================================
+# 🔹 Fonction utilitaire : enregistre les mesures d’une catégorie SNMP
+# =====================================================================
 def store_measurements_for_category(db, host, cat, data):
     """Gère l’insertion des mesures selon la catégorie SNMP."""
 
-    # --- 🔹 INTERFACES ---
+    # --- 🔸 INTERFACES ---
     if cat == "interfaces":
         for iface_name, iface_info in data.items():
             in_val = iface_info.get("in_mbps", 0.0)
             out_val = iface_info.get("out_mbps", 0.0)
             state = iface_info.get("state", "unknown")
 
-            # Enregistre les débits instantanés (en Mbps)
+            # Débits (en Mbps)
             db.session.add(Measurement(
                 host_id=host.id,
                 oid=f"{iface_name}.in",
@@ -36,12 +38,12 @@ def store_measurements_for_category(db, host, cat, data):
                 meta=cat
             ))
 
-            # Enregistre l’état de l’interface
+            # État de l’interface
             upsert_current_metric(db, host.id, f"{iface_name}.state", iface_name, state, meta=cat)
 
         return
 
-    # --- 🔹 RAM / STORAGE ---
+    # --- 🔸 RAM / STORAGE ---
     if cat in ("ram", "storage"):
         for metric, val in data.items():
             if isinstance(val, dict) and "used" in val and "total" in val:
@@ -59,7 +61,7 @@ def store_measurements_for_category(db, host, cat, data):
                 check_thresholds(db, host, cat, metric, pct, Alert)
         return
 
-    # --- 🔹 CPU / SYSTEM / Autres ---
+    # --- 🔸 CPU / SYSTEM / AUTRES ---
     for metric, val in data.items():
         upsert_current_metric(db, host.id, metric, metric, val, meta=cat)
         db.session.add(Measurement(
@@ -72,14 +74,11 @@ def store_measurements_for_category(db, host, cat, data):
         check_thresholds(db, host, cat, metric, val, Alert)
 
 
-
+# =====================================================================
 # 🔹 POLL D’UN HOST UNIQUE
+# =====================================================================
 @bp.route("/<int:host_id>", methods=["GET"])
 def poll_host_api(host_id):
-    """
-    Lance un poll SNMP sur un hôte spécifique et stocke les métriques
-    dans current_metrics + measurements.
-    """
     host = Host.query.get(host_id)
     if not host:
         abort(404, description="Host introuvable")
@@ -89,14 +88,25 @@ def poll_host_api(host_id):
 
     for cat in (host.snmp_categories or []):
         try:
-            data = get_metrics(host.ip, host.snmp_community, host.port, cat)
+            # 🔹 Récupère le nom du groupe lié (linux / pfsense / windows)
+            group_name = host.group.name if host.group else None
+
+            data = get_metrics(
+                host.ip,
+                host.snmp_community,
+                host.port,
+                cat,
+                host_id=host.id,
+                group_name=group_name
+            )
+
             result[cat] = data
-            print(f"[DEBUG POLL] {host.hostname} → catégorie {cat} ({len(data)} métriques)")
+            print(f"[DEBUG POLL] {host.hostname} [{group_name or 'default'}] → {cat} ({len(data)} métriques)")
 
             store_measurements_for_category(db, host, cat, data)
 
         except Exception as e:
-            msg = f"Erreur SNMP ({cat}): {e}"
+            msg = f"Erreur SNMP ({cat}) sur {host.hostname}: {e}"
             print(f"[ERROR] {msg}")
             errors.append(msg)
             open_alert(db, Alert, host.id, severity="warning", message=msg)
@@ -106,42 +116,55 @@ def poll_host_api(host_id):
     return jsonify({
         "host": host.hostname,
         "ip": host.ip,
+        "group": group_name,
         "categories": host.snmp_categories,
         "metrics": result,
         "errors": errors,
     })
 
 
+# =====================================================================
 # 🔹 POLL DE TOUS LES HOSTS
+# =====================================================================
 @bp.route("/all", methods=["GET"])
 def poll_all_hosts():
-    """Lance un poll SNMP sur tous les hôtes connus."""
     hosts = Host.query.all()
     summary = []
 
     for h in hosts:
         try:
+            group_name = h.group.name if h.group else None
             cat_metrics = {}
-            for cat in (h.snmp_categories or []):
-                data = get_metrics(h.ip, h.snmp_community, h.port, cat)
-                cat_metrics[cat] = data
-                print(f"[DEBUG POLL] {h.hostname} → {cat} ({len(data)} métriques)")
 
+            for cat in (h.snmp_categories or []):
+                data = get_metrics(
+                    h.ip,
+                    h.snmp_community,
+                    h.port,
+                    cat,
+                    host_id=h.id,
+                    group_name=group_name
+                )
+                cat_metrics[cat] = data
+
+                print(f"[DEBUG POLL] {h.hostname} [{group_name or 'default'}] → {cat} ({len(data)} métriques)")
                 store_measurements_for_category(db, h, cat, data)
 
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
+                "group": group_name,
                 "metrics": cat_metrics
             })
 
         except Exception as e:
-            msg = f"Erreur SNMP ({h.hostname}): {e}"
+            msg = f"Erreur SNMP sur {h.hostname}: {e}"
             print(f"[ERROR] {msg}")
             open_alert(db, Alert, h.id, severity="warning", message=msg)
             summary.append({
                 "host": h.hostname,
                 "ip": h.ip,
+                "group": group_name,
                 "error": str(e)
             })
 
@@ -149,12 +172,14 @@ def poll_all_hosts():
     return jsonify(summary)
 
 
-# 🔥 HISTORIQUE DES MÉTRIQUES
+# =====================================================================
+# 🔹 HISTORIQUE DES MÉTRIQUES (par catégorie)
+# =====================================================================
 @bp.route("/metrics/<int:host_id>/<string:category>", methods=["GET"])
 def metrics_history(host_id, category):
     """
     Ex: GET /api/poll/metrics/1/cpu?minutes=5
-    Retourne l'historique des métriques pour un host donné et une catégorie SNMP.
+    Retourne l'historique des métriques pour un host et une catégorie SNMP.
     """
     try:
         minutes = int(request.args.get("minutes", 5))
@@ -163,7 +188,6 @@ def metrics_history(host_id, category):
 
     since = datetime.utcnow() - timedelta(minutes=minutes)
 
-    # 🔧 plus souple pour les metas mal formatés (ex: "interfaces" avec guillemets)
     rows = (
         db.session.query(Measurement)
         .filter(Measurement.host_id == host_id)
@@ -181,7 +205,6 @@ def metrics_history(host_id, category):
         except (ValueError, TypeError):
             continue
 
-        # 🟢 Utilise r.oid au lieu de r.metric pour les interfaces
         metric_name = r.oid if category == "interfaces" else r.metric
 
         data.append({

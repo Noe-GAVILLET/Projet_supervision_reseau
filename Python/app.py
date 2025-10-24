@@ -27,7 +27,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
-DB_HOST = os.getenv("DB_HOST", "192.168.1.25")
+DB_HOST = os.getenv("DB_HOST", "192.168.141.115")
 DB_PORT = os.getenv("DB_PORT", "3002")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")

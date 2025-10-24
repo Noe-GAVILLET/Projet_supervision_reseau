@@ -100,17 +100,21 @@
                 <tr>
                   <td>Physical memory</td>
                   <td>
-                    {% if info.used >= 1048576 %}
-                      {{ "%.1f"|format(info.used / 1048576) }} Go
+                    {% if info.used >= 1073741824 %}
+                      {{ "%.1f"|format(info.used / 1073741824) }} Go
+                    {% elif info.used >= 1048576 %}
+                      {{ "%.1f"|format(info.used / 1048576) }} Mo
                     {% else %}
-                      {{ "%.1f"|format(info.used / 1024) }} Mo
+                      {{ "%.1f"|format(info.used / 1024) }} Ko
                     {% endif %}
                   </td>
                   <td>
-                    {% if info.total >= 1048576 %}
-                      {{ "%.1f"|format(info.total / 1048576) }} Go
+                    {% if info.total >= 1073741824 %}
+                      {{ "%.1f"|format(info.total / 1073741824) }} Go
+                    {% elif info.total >= 1048576 %}
+                      {{ "%.1f"|format(info.total / 1048576) }} Mo
                     {% else %}
-                      {{ "%.1f"|format(info.total / 1024) }} Mo
+                      {{ "%.1f"|format(info.total / 1024) }} Ko
                     {% endif %}
                   </td>
                   <td>
@@ -138,19 +142,24 @@
                 <tr>
                   <td>{{ name }}</td>
                   <td>
-                    {% if info.used >= 1048576 %}
-                      {{ "%.1f"|format(info.used / 1048576) }} Go
+                    {% if info.used >= 1073741824 %}
+                      {{ "%.1f"|format(info.used / 1073741824) }} Go
+                    {% elif info.used >= 1048576 %}
+                      {{ "%.1f"|format(info.used / 1048576) }} Mo
                     {% else %}
-                      {{ "%.1f"|format(info.used / 1024) }} Mo
+                      {{ "%.1f"|format(info.used / 1024) }} Ko
                     {% endif %}
                   </td>
                   <td>
-                    {% if info.total >= 1048576 %}
-                      {{ "%.1f"|format(info.total / 1048576) }} Go
+                    {% if info.total >= 1073741824 %}
+                      {{ "%.1f"|format(info.total / 1073741824) }} Go
+                    {% elif info.total >= 1048576 %}
+                      {{ "%.1f"|format(info.total / 1048576) }} Mo
                     {% else %}
-                      {{ "%.1f"|format(info.total / 1024) }} Mo
+                      {{ "%.1f"|format(info.total / 1024) }} Ko
                     {% endif %}
                   </td>
+                  
                   <td>
                     {% set pct = info.pct|float %}
                     {% if pct > 90 %}
@@ -274,23 +283,27 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (category === "storage") {
-          const keepList = ["swap space", "memory buffers", "/"];
           const filtered = {};
-          for (const metric of Object.keys(byMetric)) {
-            if (!metric.endsWith(".pct")) continue;
-            const label = metric.replace(/\.pct$/, "");
-            const name = label.toLowerCase();
-            const ignored = [
-              "virtual memory", "physical memory", "cached", "shared", "available",
-              "/run", "/dev/shm", "/tmp", "/lock", "/credentials", "/user"
-            ];
-            if (keepList.includes(label) || !ignored.some(sub => name.includes(sub))) {
-              filtered[label] = byMetric[metric];
-            }
-          }
+
+          data.forEach(entry => {
+            let label = entry.metric;
+            if (!label.endsWith(".pct")) return; // on ne garde que les % utilisables
+
+            // 🔹 Filtrage volumes inutiles
+            const lname = label.toLowerCase();
+            const ignored = ["shm", "tmp", "run", "dev", "proc", "sys"];
+            if (ignored.some(sub => lname.includes(sub))) return;
+
+            label = label.replace(/\.pct$/, "");
+            if (!filtered[label]) filtered[label] = [];
+            filtered[label].push({ x: entry.timestamp, y: entry.value });
+          });
+
           Object.keys(byMetric).forEach(k => delete byMetric[k]);
           Object.assign(byMetric, filtered);
         }
+
+
 
         const datasets = Object.entries(byMetric).map(([metric, points]) => ({
           label: metric,

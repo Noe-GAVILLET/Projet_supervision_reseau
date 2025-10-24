@@ -28,13 +28,15 @@
         <input name="description" class="form-control" />
       </div>
 
+      <!-- Communauté SNMP -->
       <div class="col-md-6">
         <label class="form-label">Communauté SNMP *</label>
         <input name="snmp_community" class="form-control" value="public" required />
       </div>
 
+      <!-- Groupe / Type d’équipement -->
       <div class="col-md-6">
-        <label class="form-label">Groupe</label>
+        <label class="form-label">Groupe / Type d’équipement</label>
         <div class="d-flex gap-2">
           <select name="group_id" class="form-select">
             <option value="">— Aucun —</option>
@@ -44,9 +46,10 @@
           </select>
           <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
         </div>
+        <div class="form-text">Permet d'adapter automatiquement les OID SNMP selon le type d'équipement.</div>
       </div>
 
-      <!-- Catégories SNMP (checkboxes) -->
+      <!-- Catégories SNMP -->
       <div class="col-12">
         <label class="form-label">Catégories SNMP *</label>
         <div class="d-flex flex-wrap gap-4">
@@ -64,6 +67,7 @@
         </div>
       </div>
 
+      <!-- Tags -->
       <div class="col-12">
         <label class="form-label">Tags (séparés par des virgules)</label>
         <input name="tags" class="form-control" placeholder="prod, router, snmpv2" />
