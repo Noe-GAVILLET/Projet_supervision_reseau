@@ -40,6 +40,19 @@ CREATE TABLE IF NOT EXISTS `groups` (
   UNIQUE KEY `uq_groups_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 🔹 Groupes par défaut (types d’équipements)
+INSERT INTO `groups` (`name`, `description`)
+SELECT * FROM (SELECT 'linux' AS name, 'Serveur Linux standard' AS description) AS tmp
+WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE `name` = 'linux');
+
+INSERT INTO `groups` (`name`, `description`)
+SELECT * FROM (SELECT 'pfsense' AS name, 'Firewall pfSense / FreeBSD' AS description) AS tmp
+WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE `name` = 'pfsense');
+
+INSERT INTO `groups` (`name`, `description`)
+SELECT * FROM (SELECT 'windows' AS name, 'Machine Windows SNMP' AS description) AS tmp
+WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE `name` = 'windows');
+
 -- ============================================================================
 -- Templates de scan (réutilisables)
 -- ============================================================================
@@ -74,19 +87,13 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   `description` VARCHAR(255) DEFAULT NULL,
   `ip` VARCHAR(45) NOT NULL,
   `port` INT NOT NULL DEFAULT 161,
-
   `snmp_community` VARCHAR(128) DEFAULT 'public',
   `snmp_categories` JSON DEFAULT NULL,  -- ex: ["system","cpu","storage","interfaces"]
-
   `group_id` INT UNSIGNED DEFAULT NULL,
   `template_id` INT UNSIGNED DEFAULT NULL,
-
-  -- 🔹 Nouveau champ : statut de disponibilité
   `status` ENUM('up','down','unknown') NOT NULL DEFAULT 'unknown',
-
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_hosts_hostname` (`hostname`),
   KEY `idx_hosts_ip_port` (`ip`,`port`),
@@ -94,7 +101,6 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   KEY `idx_hosts_template_id` (`template_id`),
   KEY `idx_hosts_snmp_community` (`snmp_community`),
   KEY `idx_hosts_status` (`status`),
-
   CONSTRAINT `fk_hosts_group`
     FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`)
     ON UPDATE CASCADE ON DELETE SET NULL,
@@ -209,7 +215,9 @@ CREATE TABLE IF NOT EXISTS `poll_results` (
 
 CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 
-
+-- ============================================================================
+-- Utilisateur admin par défaut
+-- ============================================================================
 DELIMITER $$
 
 INSERT INTO `users` (`username`, `email`, `password_hash`, `role`)
