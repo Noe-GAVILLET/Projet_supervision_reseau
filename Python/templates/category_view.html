@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block content %}
+<body>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h4 class="mb-0 text-capitalize">
+    Vue globale catégorie : {{ category }}
+  </h4>
+  <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
+</div>
+
+{% if hosts %}
+  {% for entry in hosts %}
+    {% set host = entry.host %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h5 class="mb-0">{{ host.hostname }}</h5>
+          <a href="{{ url_for('host_view', host_id=host.id) }}" class="btn btn-sm btn-outline-primary">
+            Voir le détail
+          </a>
+        </div>
+
+        <dl class="row small mb-3">
+          <dt class="col-sm-3">IP / Port</dt>
+          <dd class="col-sm-9">{{ host.ip }}:{{ host.port }}</dd>
+          <dt class="col-sm-3">Communauté SNMP</dt>
+          <dd class="col-sm-9">{{ host.snmp_community }}</dd>
+        </dl>
+
+        {% if entry.error %}
+          <div class="alert alert-warning">{{ entry.error }}</div>
+        {% else %}
+          {% set metrics = entry.metrics %}
+          {% if metrics %}
+            {% if category == "cpu" %}
+              <table class="table table-sm">
+                <thead><tr><th>Core</th><th>Charge</th></tr></thead>
+                <tbody>
+                  {% for cpu_oid, load in metrics.items() %}
+                    <tr>
+                      <td>Core {{ loop.index }}</td>
+                      <td>
+                        {% set pct = load|float %}
+                        {% if pct > 90 %}
+                          <span class="badge bg-danger">{{ pct }}%</span>
+                        {% elif pct > 80 %}
+                          <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                        {% else %}
+                          <span class="badge bg-success">{{ pct }}%</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+
+            {% if category == "ram" %}
+              <table class="table table-sm">
+                <thead><tr><th>Type</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+                <tbody>
+                  {% for name, info in metrics.items() %}
+                    {% if info is mapping %}
+                      <tr>
+                        <td>{{ name }}</td>
+                        <td>
+                          {% if info.used >= 1073741824 %}
+                            {{ "%.1f"|format(info.used / 1073741824) }} Go
+                          {% elif info.used >= 1048576 %}
+                            {{ "%.1f"|format(info.used / 1048576) }} Mo
+                          {% else %}
+                            {{ "%.1f"|format(info.used / 1024) }} Ko
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if info.total >= 1073741824 %}
+                            {{ "%.1f"|format(info.total / 1073741824) }} Go
+                          {% elif info.total >= 1048576 %}
+                            {{ "%.1f"|format(info.total / 1048576) }} Mo
+                          {% else %}
+                            {{ "%.1f"|format(info.total / 1024) }} Ko
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% set pct = info.pct|float %}
+                          {% if pct > 90 %}
+                            <span class="badge bg-danger">{{ pct }}%</span>
+                          {% elif pct > 80 %}
+                            <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                          {% else %}
+                            <span class="badge bg-success">{{ pct }}%</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+
+            {% if category == "storage" %}
+              <table class="table table-sm">
+                <thead><tr><th>Volume</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+                <tbody>
+                  {% for name, info in metrics.items() %}
+                    {% if info is mapping %}
+                      <tr>
+                        <td>{{ name }}</td>
+                        <td>
+                          {% if info.used >= 1073741824 %}
+                            {{ "%.1f"|format(info.used / 1073741824) }} Go
+                          {% elif info.used >= 1048576 %}
+                            {{ "%.1f"|format(info.used / 1048576) }} Mo
+                          {% else %}
+                            {{ "%.1f"|format(info.used / 1024) }} Ko
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if info.total >= 1073741824 %}
+                            {{ "%.1f"|format(info.total / 1073741824) }} Go
+                          {% elif info.total >= 1048576 %}
+                            {{ "%.1f"|format(info.total / 1048576) }} Mo
+                          {% else %}
+                            {{ "%.1f"|format(info.total / 1024) }} Ko
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% set pct = info.pct|float %}
+                          {% if pct > 90 %}
+                            <span class="badge bg-danger">{{ pct }}%</span>
+                          {% elif pct > 80 %}
+                            <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                          {% else %}
+                            <span class="badge bg-success">{{ pct }}%</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+
+            <canvas id="chart-{{ category }}-{{ host.id }}" height="100"></canvas>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="alert alert-warning">
+    Aucun hôte ne surveille la catégorie {{ category }}.
+  </div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const category = "{{ category }}";
+  const canvases = document.querySelectorAll("canvas[id^='chart-']");
+
+  canvases.forEach(canvas => {
+    const hostId = canvas.id.split("-").pop();
+
+    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
+      .then(resp => resp.json())
+      .then(data => {
+        if (!data || data.length === 0) return;
+
+        const byMetric = {};
+        const metricMap = {};
+        let coreIndex = 1;
+
+        data.forEach(entry => {
+          let label = entry.metric;
+          if (category === "cpu") {
+            if (!metricMap[label]) metricMap[label] = `Core ${coreIndex++}`;
+            label = metricMap[label];
+          }
+          if (!byMetric[label]) byMetric[label] = [];
+          byMetric[label].push({ x: entry.timestamp, y: entry.value });
+        });
+
+        if (category === "ram") {
+          const filtered = {};
+          if (byMetric["pct"]) filtered["Physical memory"] = byMetric["pct"];
+          Object.assign(byMetric, filtered);
+        }
+
+        if (category === "storage") {
+        const filtered = {};
+
+        data.forEach(entry => {
+            let label = entry.metric;
+            if (!label.endsWith(".pct")) return; // garder uniquement les pourcentages
+
+            // filtrer les volumes inutiles
+            const lname = label.toLowerCase();
+            const ignored = ["shm", "tmp", "run", "dev", "proc", "sys"];
+            if (ignored.some(sub => lname.includes(sub))) return;
+
+            // simplifier le nom
+            label = label.replace(/\.pct$/, "");
+            if (!filtered[label]) filtered[label] = [];
+            filtered[label].push({ x: entry.timestamp, y: entry.value });
+        });
+
+        // vider l'ancien objet avant remplacement
+        Object.keys(byMetric).forEach(k => delete byMetric[k]);
+        Object.assign(byMetric, filtered);
+        }
+
+        const datasets = Object.entries(byMetric).map(([metric, points]) => ({
+          label: metric,
+          data: points.map(p => ({ x: p.x, y: p.y })),
+          fill: false,
+          tension: 0.2
+        }));
+
+        const ctx = canvas.getContext("2d");
+        new Chart(ctx, {
+          type: 'line',
+          data: { datasets },
+          options: {
+            responsive: true,
+            plugins: {
+              title: { display: true, text: `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')}` },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
+                }
+              }
+            },
+            scales: {
+              x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } },
+              y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } }
+            }
+          }
+        });
+      })
+      .catch(err => console.error(`Erreur ${category} (${canvas.id}) :`, err));
+  });
+});
+</script>
+
+<script>
+  setInterval(() => location.reload(), 20000);
+</script>
+</body>
+{% endblock %}

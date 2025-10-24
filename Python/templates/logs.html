@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-3">📜 Journaux SNMP</h3>
+
+  <form class="row g-2 mb-3">
+    <div class="col-md-3">
+      <select class="form-select" name="host_id">
+        <option value="">-- Tous les hôtes --</option>
+        {% for h in hosts %}
+          <option value="{{ h.id }}" {% if filters.host_id == h.id %}selected{% endif %}>{{ h.hostname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-3">
+      <select class="form-select" name="group_id">
+        <option value="">-- Tous les groupes --</option>
+        {% for g in groups %}
+          <option value="{{ g.id }}" {% if filters.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <select class="form-select" name="category">
+        <option value="">-- Catégorie --</option>
+        {% for cat in ['system','cpu','ram','storage','interfaces'] %}
+          <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <select class="form-select" name="duration">
+        {% for val,label in {'10m':'10 min','1h':'1 heure','24h':'24 h','7d':'7 jours'}.items() %}
+          <option value="{{ val }}" {% if filters.duration == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100">Filtrer</button>
+    </div>
+  </form>
+
+  <div class="mb-3">
+    <a class="btn btn-outline-success" href="{{ url_for('logs.logs_export', **filters) }}">📤 Exporter Excel</a>
+  </div>
+
+  <table class="table table-striped table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Horodatage</th>
+        <th>Hôte</th>
+        <th>IP</th>
+        <th>Catégorie</th>
+        <th>Métrique / Détail</th>
+        <th>Valeur</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in logs %}
+      <tr>
+        <td>{{ l.ts }}</td>
+        <td>{{ l.host }}</td>
+        <td>{{ l.ip }}</td>
+        <td>{{ l.meta }}</td>
+        <td>{{ l.metric }}</td>
+        <td>
+          {% if "{" in l.value %}
+            <code>{{ l.value }}</code>
+          {% else %}
+            {{ l.value }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

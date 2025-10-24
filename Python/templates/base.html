@@ -46,14 +46,8 @@
                 Devices
               </a>
               <ul class="dropdown-menu">
-                {% if groups %}
-                  {% for group in groups %}
-                    <li><a class="dropdown-item" href="{{ url_for('group_hosts', group_id=group.id) }}">{{ group.name }}</a></li>
-                  {% endfor %}
-                  <li><hr class="dropdown-divider"></li>
-                {% endif %}
-                <li><a class="dropdown-item" href="{{ url_for('group_new') }}">+ Créer un groupe</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">🔍 Rechercher un device</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">🧾 Logs SNMP</a></li>
               </ul>
             </li>
 
@@ -61,11 +55,10 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Health</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('category_view', category='ram') }}">RAM</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_view', category='storage') }}">Storage</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_view', category='interfaces') }}">Interfaces</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_view', category='cpu') }}">CPU</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_view', category='system') }}">System</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='cpu') }}">CPU</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='ram') }}">RAM</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='storage') }}">Storage</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='interfaces') }}">Interfaces</a></li>
               </ul>
             </li>
 

@@ -25,9 +25,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # Config Flask + DB 
 # -----------------------------------------------------------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "4tre84t9ret4ert")
 
-DB_HOST = os.getenv("DB_HOST", "192.168.141.115")
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = os.getenv("DB_PORT", "3002")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")
@@ -701,33 +701,6 @@ def hosts_import():
 
     return render_template("hosts_import.html", report=report)
 
-@app.route("/health/<string:category>")
-@login_required
-def category_view(category):
-    """Affiche les dernières métriques pour une catégorie SNMP donnée (CPU, RAM, etc.)."""
-    valid_categories = ["cpu", "ram", "storage", "interfaces", "system"]
-    if category not in valid_categories:
-        flash("Catégorie inconnue", "warning")
-        return redirect(url_for("admin"))
-
-    since = datetime.utcnow() - timedelta(minutes=10)
-    rows = (
-        Measurement.query
-        .filter(Measurement.meta == category)
-        .filter(Measurement.created_at >= since)
-        .order_by(Measurement.created_at.desc())
-        .limit(500)
-        .all()
-    )
-
-    # Regrouper les données par host
-    grouped = {}
-    for r in rows:
-        if r.host_id not in grouped:
-            grouped[r.host_id] = {"host": r.host, "data": []}
-        grouped[r.host_id]["data"].append(r)
-
-    return render_template("health_category.html", category=category, grouped=grouped)
 
 @app.route("/users/<int:user_id>")
 @login_required
@@ -752,8 +725,18 @@ def user_edit(user_id):
         user.email = request.form.get("email", user.email)
         user.role = request.form.get("role", user.role)
         user.is_active = "is_active" in request.form
-        user.receive_alerts = "receive_alerts" in request.form  # ✅ nouveau champ
+        user.receive_alerts = "receive_alerts" in request.form
         user.updated_at = datetime.utcnow()
+
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        if new_password:
+            if new_password != confirm_password:
+                flash("Les mots de passe ne correspondent pas.", "danger")
+                return render_template("user_edit.html", user=user)
+            user.password_hash = generate_password_hash(new_password)
+            flash("Mot de passe mis à jour avec succès ✅", "success")
 
         db.session.commit()
         flash("Profil mis à jour avec succès ✅", "success")
@@ -792,6 +775,27 @@ def group_hosts(group_id):
         selected_group=group,
         stats=stats
     )
+
+
+@app.route("/category/<string:category>")
+@login_required
+def category_overview(category):
+    from models import Host
+    from snmp_utils import get_metrics
+
+    # Récupère les hôtes surveillant cette catégorie
+    hosts = Host.query.filter(Host.snmp_categories.like(f"%{category}%")).all()
+
+    host_data = []
+    for h in hosts:
+        try:
+            metrics = get_metrics(h.ip, h.snmp_community or "public", h.port or 161, category)
+            host_data.append({"host": h, "metrics": metrics})
+        except Exception as e:
+            host_data.append({"host": h, "error": str(e)})
+
+    return render_template("category_view.html", category=category, hosts=host_data)
+
 # ---------- Hosts ----------
 @app.route("/hosts/new", methods=["GET", "POST"])
 @login_required
@@ -885,6 +889,9 @@ with app.app_context():
 # -----------------------------------------------------------------------------
 # Contexte global pour la navbar
 # -----------------------------------------------------------------------------
+from routes import logs
+app.register_blueprint(logs.bp)
+
 from flask import g
 
 from models import CurrentMetric

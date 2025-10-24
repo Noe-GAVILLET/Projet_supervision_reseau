@@ -1,45 +1,103 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container mt-4">
-  <h3 class="mb-3">Modifier le profil</h3>
 
-  <form method="post" class="card shadow-sm p-4 col-12 col-md-6">
-    <div class="mb-3">
-      <label class="form-label">Nom d'utilisateur</label>
-      <input name="username" class="form-control" value="{{ user.username }}" required />
+<div class="container-fluid px-3 px-lg-5 py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <h3 class="fw-semibold mb-0">
+      <i class="bi bi-person-gear me-2"></i>Modifier l'utilisateur
+    </h3>
+    <a href="{{ url_for('user_list') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i> Retour à la liste
+    </a>
+  </div>
+
+  <form method="post" class="row g-4">
+
+    <!-- ─── Informations de l’utilisateur ─────────────────────── -->
+    <div class="col-12 col-lg-8">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h5 class="card-title text-primary fw-semibold mb-3">
+            <i class="bi bi-info-circle me-2"></i>Informations de l’utilisateur
+          </h5>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nom d'utilisateur</label>
+              <input name="username" class="form-control" value="{{ user.username }}" required>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Email</label>
+              <input name="email" type="email" class="form-control" value="{{ user.email or '' }}">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Rôle</label>
+              <select name="role" class="form-select">
+                <option value="operator" {% if user.role == 'operator' %}selected{% endif %}>Opérateur</option>
+                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrateur</option>
+              </select>
+            </div>
+
+            <div class="col-md-3 d-flex align-items-center">
+              <div class="form-check mt-3">
+                <input type="checkbox" name="is_active" id="is_active" class="form-check-input" {% if user.is_active %}checked{% endif %}>
+                <label for="is_active" class="form-check-label">Actif</label>
+              </div>
+            </div>
+
+            <div class="col-md-3 d-flex align-items-center">
+              <div class="form-check mt-3">
+                <input type="checkbox" name="receive_alerts" id="receive_alerts" class="form-check-input" {% if user.receive_alerts %}checked{% endif %}>
+                <label for="receive_alerts" class="form-check-label">Reçoit les alertes</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Bloc : Changer le mot de passe ───────────────────── -->
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h5 class="card-title text-primary fw-semibold mb-3">
+            <i class="bi bi-lock me-2"></i>Changer le mot de passe
+          </h5>
+
+          <div class="alert alert-light border mb-3 py-2">
+            <small class="text-muted">
+              Laissez vide pour ne pas modifier le mot de passe.
+            </small>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nouveau mot de passe</label>
+              <input type="password" name="new_password" class="form-control" placeholder="********">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Confirmer le mot de passe</label>
+              <input type="password" name="confirm_password" class="form-control" placeholder="********">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Boutons d’action ─────────────────────────────────── -->
+      <div class="d-flex justify-content-end gap-3 mb-5">
+        <a href="{{ url_for('user_list') }}" class="btn btn-outline-secondary px-4">
+          <i class="bi bi-x-lg me-1"></i> Annuler
+        </a>
+        <button type="submit" class="btn btn-success px-4">
+          <i class="bi bi-check-lg me-1"></i> Enregistrer
+        </button>
+      </div>
     </div>
 
-    <div class="mb-3">
-      <label class="form-label">Email</label>
-      <input name="email" type="email" class="form-control" value="{{ user.email or '' }}" />
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Rôle</label>
-      <select name="role" class="form-select">
-        <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
-        <option value="operator" {% if user.role == 'operator' %}selected{% endif %}>Opérateur</option>
-      </select>
-    </div>
-
-    <div class="form-check mb-2">
-      <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
-             {% if user.is_active %}checked{% endif %}>
-      <label class="form-check-label" for="is_active">Compte actif</label>
-    </div>
-
-    <div class="form-check mb-4">
-      <input class="form-check-input" type="checkbox" name="receive_alerts" id="receive_alerts"
-             {% if user.receive_alerts %}checked{% endif %}>
-      <label class="form-check-label" for="receive_alerts">
-        Recevoir les alertes par email
-      </label>
-    </div>
-
-    <div>
-      <button type="submit" class="btn btn-primary">Enregistrer</button>
-      <a href="{{ url_for('user_profile', user_id=user.id) }}" class="btn btn-secondary">Annuler</a>
-    </div>
   </form>
+
 </div>
+
 {% endblock %}
