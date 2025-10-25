@@ -246,14 +246,25 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const categories = ["cpu", "ram", "storage"];
   const hostId = parseInt(document.body.dataset.hostId);
+  const timeSelect = document.getElementById("time-range");
+  const charts = {}; // 🔹 Stocke les instances Chart.js
 
-  categories.forEach(category => {
-    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
+  // 🔹 Convertit "10m" / "1h" / "24h" / "7d" en minutes
+  function getMinutes() {
+    const val = timeSelect.value;
+    if (val.endsWith("m")) return parseInt(val);
+    if (val.endsWith("h")) return parseInt(val) * 60;
+    if (val.endsWith("d")) return parseInt(val) * 24 * 60;
+    return 10;
+  }
+
+  // 🔹 Fonction d’affichage / mise à jour d’une catégorie
+  function loadCategory(category, minutes) {
+    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=${minutes}`)
       .then(resp => resp.json())
       .then(data => {
         if (!data || data.length === 0) {
@@ -284,32 +295,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (category === "storage") {
           const filtered = {};
-
           data.forEach(entry => {
             let label = entry.metric;
-            if (!label.endsWith(".pct")) return; // on ne garde que les % utilisables
-
-            // 🔹 Filtrage volumes inutiles
+            if (!label.endsWith(".pct")) return;
             const lname = label.toLowerCase();
             const ignored = ["shm", "tmp", "run", "dev", "proc", "sys"];
             if (ignored.some(sub => lname.includes(sub))) return;
-
             label = label.replace(/\.pct$/, "");
             if (!filtered[label]) filtered[label] = [];
             filtered[label].push({ x: entry.timestamp, y: entry.value });
           });
-
           Object.keys(byMetric).forEach(k => delete byMetric[k]);
           Object.assign(byMetric, filtered);
         }
-
-
 
         const datasets = Object.entries(byMetric).map(([metric, points]) => ({
           label: metric,
           data: points.map(p => ({ x: p.x, y: p.y })),
           fill: false,
-          tension: 0.2
+          tension: 0.2,
+          pointRadius: 0,       
+          pointHoverRadius: 4    
         }));
 
         const yAxisOptions = {
@@ -319,14 +325,22 @@ document.addEventListener("DOMContentLoaded", function () {
         };
 
         const ctx = document.getElementById(`chart-${category}`);
-        if (ctx) {
-          new Chart(ctx, {
+        if (!ctx) return;
+
+        // 🔹 Si le graphe existe déjà → on met à jour
+        if (charts[category]) {
+          charts[category].data.datasets = datasets;
+          charts[category].options.plugins.title.text = `Historique ${category.toUpperCase()} (${minutes} min)`;
+          charts[category].update();
+        } else {
+          // 🔹 Sinon on le crée
+          charts[category] = new Chart(ctx, {
             type: 'line',
             data: { datasets },
             options: {
               responsive: true,
               plugins: {
-                title: { display: true, text: `Historique ${category.toUpperCase()} (10 min)` },
+                title: { display: true, text: `Historique ${category.toUpperCase()} (${minutes} min)` },
                 tooltip: {
                   callbacks: {
                     label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
@@ -342,54 +356,47 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       })
       .catch(err => console.error(`Erreur ${category} :`, err));
-  });
-fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
-  .then(resp => resp.json())
-  .then(data => {
-    if (!data || data.length === 0) {
-      console.warn("[chart] Pas de données interfaces");
-      return;
-    }
+  }
 
-    // 🟢 Somme globale du trafic entrant/sortant (toutes interfaces)
-    const totalIn = {};
-    const totalOut = {};
+  // 🔹 Fonction pour les interfaces
+  function loadInterfaces(minutes) {
+    fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=${minutes}`)
+      .then(resp => resp.json())
+      .then(data => {
+        if (!data || data.length === 0) {
+          console.warn("[chart] Pas de données interfaces");
+          return;
+        }
 
-    data.forEach(entry => {
-      const ts = entry.timestamp;
-      if (entry.metric.endsWith(".in"))  totalIn[ts]  = (totalIn[ts]  || 0) + entry.value;
-      if (entry.metric.endsWith(".out")) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
-    });
+        const totalIn = {}, totalOut = {};
+        data.forEach(entry => {
+          const ts = entry.timestamp;
+          if (entry.metric.endsWith(".in"))  totalIn[ts]  = (totalIn[ts]  || 0) + entry.value;
+          if (entry.metric.endsWith(".out")) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
+        });
 
-    // 🧮 Calcul des débits (octets -> Mbps)
-    function computeRates(map) {
-      const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
-      const rates = [];
-      for (let i = 1; i < entries.length; i++) {
-        const tPrev = new Date(entries[i - 1][0]);
-        const tCurr = new Date(entries[i][0]);
-        const dt = (tCurr - tPrev) / 1000;
-        if (dt <= 0) continue;
+        function computeRates(map) {
+          const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+          const rates = [];
+          for (let i = 1; i < entries.length; i++) {
+            const tPrev = new Date(entries[i - 1][0]);
+            const tCurr = new Date(entries[i][0]);
+            const dt = (tCurr - tPrev) / 1000;
+            if (dt <= 0) continue;
+            let delta = entries[i][1] - entries[i - 1][1];
+            if (delta < 0) delta = 0;
+            const mbps = (delta * 8) / (dt * 1_000_000);
+            rates.push({ x: entries[i][0], y: mbps });
+          }
+          return rates;
+        }
 
-        let delta = entries[i][1] - entries[i - 1][1];
-        if (delta < 0) delta = 0; // reset/overflow SNMP
-        const mbps = (delta * 8) / (dt * 1_000_000);
-        rates.push({ x: entries[i][0], y: mbps });
-      }
-      return rates;
-    }
+        const inData  = computeRates(totalIn);
+        const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y }));
+        const ctx = document.getElementById("chart-traffic");
+        if (!ctx) return;
 
-    const inData  = computeRates(totalIn);
-    const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y })); // Out en négatif
-
-    // 🎨 Création du graphique Chart.js
-    const ctx = document.getElementById("chart-traffic");
-    if (!ctx) return;
-
-    new Chart(ctx, {
-      type: "line",
-      data: {
-        datasets: [
+        const datasets = [
           {
             label: "Inbound (Mbps)",
             data: inData,
@@ -397,7 +404,9 @@ fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
             backgroundColor: "rgba(0, 200, 83, 0.1)",
             fill: true,
             tension: 0.3,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: 0,          
+            pointHoverRadius: 4
           },
           {
             label: "Outbound (Mbps)",
@@ -406,46 +415,73 @@ fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
             backgroundColor: "rgba(244, 67, 54, 0.1)",
             fill: true,
             tension: 0.3,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: 0,         
+            pointHoverRadius: 4
           }
-        ]
-      },
-      options: {
-        responsive: true,
-        interaction: { mode: "index", intersect: false },
-        stacked: false,
-        plugins: {
-          legend: { position: "top" },
-          title: { display: true, text: "Overall Network Traffic (Mbps)" },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
+        ];
+
+        if (charts["interfaces"]) {
+          charts["interfaces"].data.datasets = datasets;
+          charts["interfaces"].options.plugins.title.text = `Overall Network Traffic (Mbps, ${minutes} min)`;
+          charts["interfaces"].update();
+        } else {
+          charts["interfaces"] = new Chart(ctx, {
+            type: "line",
+            data: { datasets },
+            options: {
+              responsive: true,
+              interaction: { mode: "index", intersect: false },
+              stacked: false,
+              plugins: {
+                legend: { position: "top" },
+                title: { display: true, text: `Overall Network Traffic (Mbps, ${minutes} min)` },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
+                  title: { display: true, text: "Horodatage" }
+                },
+                y: {
+                  beginAtZero: true,
+                  title: { display: true, text: "Débit (Mbps)" },
+                  ticks: { callback: (v) => Math.abs(v) }
+                }
+              }
             }
-          }
-        },
-        scales: {
-          x: {
-            type: "time",
-            time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
-            title: { display: true, text: "Horodatage" }
-          },
-          y: {
-            beginAtZero: true,
-            title: { display: true, text: "Débit (Mbps)" },
-            ticks: { callback: (v) => Math.abs(v) }
-          }
+          });
         }
-      }
-    });
-  })
-  .catch(err => console.error("Erreur network traffic:", err));
+      })
+      .catch(err => console.error("Erreur network traffic:", err));
+  }
 
+  // 🔹 Charge tous les graphes
+  function loadCharts() {
+    const minutes = getMinutes();
+    categories.forEach(c => loadCategory(c, minutes));
+    loadInterfaces(minutes);
+  }
 
+  // 🔹 Événement de changement de période
+  timeSelect.addEventListener("change", () => {
+    loadCharts(); // ✅ pas de suppression des canvas
+  });
+
+  // Premier chargement
+  loadCharts();
 });
 </script>
-<!-- 🔄 Rafraîchissement auto toutes les 10s -->
+
+<!-- 🔄 Rafraîchissement auto toutes les 20s -->
 <script>
   setInterval(() => location.reload(), 20000);
 </script>
+
 </body>
 {% endblock %}

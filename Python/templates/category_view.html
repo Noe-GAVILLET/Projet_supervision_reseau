@@ -218,7 +218,9 @@ document.addEventListener("DOMContentLoaded", function () {
           label: metric,
           data: points.map(p => ({ x: p.x, y: p.y })),
           fill: false,
-          tension: 0.2
+          tension: 0.2,
+          pointRadius: 0,      
+          pointHoverRadius: 4
         }));
 
         const ctx = canvas.getContext("2d");

@@ -3,6 +3,8 @@ from flask_login import UserMixin
 from datetime import datetime
 from database import db
 from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 # Tables associatives
 host_tags = db.Table(

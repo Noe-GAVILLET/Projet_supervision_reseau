@@ -69,8 +69,13 @@
   ======================== -->
   {% if hosts %}
   <div class="card shadow-sm">
-    <div class="card-header bg-light fw-semibold">
-      <i class="bi bi-server"></i> Liste des hôtes supervisés
+    <div class="d-flex justify-content-between align-items-center px-2 py-1 border-bottom bg-light rounded-top">
+      <h5 class="mb-0">
+        <i class="bi bi-hdd-network me-1"></i> Liste des hôtes supervisés
+      </h5>
+      <a href="{{ url_for('export_hosts_csv') }}" class="btn btn-outline-success btn-sm px-3">
+        <i class="bi bi-download me-1"></i> Exporter
+      </a>
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">

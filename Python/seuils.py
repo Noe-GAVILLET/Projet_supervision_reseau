@@ -3,7 +3,8 @@ import subprocess
 from db_utils import open_alert, resolve_alert
 from models import CurrentMetric, Measurement, Alert
 import platform
-
+import logging
+logger = logging.getLogger(__name__)
 
 def check_host_reachability(db, host, Alert, timeout=2):
     """Teste la disponibilité réseau (ping) compatible Windows / Linux."""

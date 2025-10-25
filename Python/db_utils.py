@@ -6,7 +6,8 @@ from email.mime.multipart import MIMEMultipart
 
 from models import CurrentMetric, Measurement, Alert, User
 from database import db
-
+import logging
+logger = logging.getLogger(__name__)
 # ⚠️ Idéalement, lis ces valeurs depuis des variables d'environnement
 ADMIN_EMAIL = "noe.gavillet@gmail.com"      # Fallback si aucun abonné
 SENDER_EMAIL = "noe.gavillet@gmail.com"     # Compte SMTP utilisé pour l'envoi

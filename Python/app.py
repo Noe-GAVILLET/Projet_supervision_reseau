@@ -3,7 +3,10 @@ import csv
 import re
 import ipaddress
 import hashlib
+import io
 import random
+import logging
+from logging.handlers import RotatingFileHandler
 from io import TextIOWrapper
 from datetime import datetime, timedelta
 from functools import wraps
@@ -11,7 +14,8 @@ from typing import List, Optional
 from snmp_utils import snmp_get, snmp_walk, get_metrics
 from models import User, Host, Alert, Group, Tag, Template, CurrentMetric, Measurement, host_tags
 from seuils import get_severity
-
+import logging
+logger = logging.getLogger(__name__)
 # --- Flask / SQLAlchemy / Security ---
 from flask import (
     Flask, Response, render_template, redirect, url_for,
@@ -20,6 +24,33 @@ from flask import (
 from database import db
 from sqlalchemy import or_, func, case
 from werkzeug.security import check_password_hash, generate_password_hash
+
+os.makedirs("logs", exist_ok=True)
+log_file = "logs/supervision.log"
+log_formatter = logging.Formatter(
+    "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+# --- 1️⃣ Fichier principal supervision.log ---
+supervision_handler = RotatingFileHandler(
+    "logs/supervision.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
+)
+supervision_handler.setFormatter(log_formatter)
+supervision_handler.setLevel(logging.INFO)
+
+# --- 2️⃣ Sortie console ---
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+console_handler.setLevel(logging.INFO)
+
+# --- Logger global ---
+logging.basicConfig(level=logging.INFO, handlers=[supervision_handler, console_handler])
+
+# --- 3️⃣ Logger Flask/Werkzeug ---
+flask_logger = logging.getLogger('werkzeug')
+flask_logger.addHandler(supervision_handler)
+flask_logger.addHandler(console_handler)
 
 # ----------------------------------------------------------------------------- 
 # Config Flask + DB 
@@ -280,6 +311,20 @@ def healthz():
         user=g.user,
         role=g.role,
     )
+
+@app.route("/logs/poller")
+@login_required
+def view_poller_log():
+    """Affiche les logs du poller/scheduler SNMP."""
+    log_path = os.path.join("logs", "poller.log")
+
+    if not os.path.exists(log_path):
+        return render_template("service_logs.html", lines=["Aucun log trouvé."])
+
+    with open(log_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()[-300:]  # 🔹 dernières 300 lignes seulement
+
+    return render_template("service_logs.html", lines=lines)
 
 @app.route("/hosts/<int:host_id>")
 @login_required
@@ -576,6 +621,47 @@ def template_new():
         flash(f"Template « {name} » créé.", "success")
         return redirect(url_for("host_new"))
     return render_template("template_new.html")
+
+@app.route('/hosts/export')
+@login_required
+def export_hosts_csv():
+    """Exporte la liste des hôtes au format CSV compatible avec l'import."""
+    from models import Host
+
+    hosts = Host.query.all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # En-têtes strictement selon le modèle attendu
+    writer.writerow(['hostname', 'description', 'group', 'ip', 'port',
+                     'template', 'tags', 'snmp_community', 'snmp_categories'])
+
+    for h in hosts:
+        group_name = h.group.name if getattr(h, 'group', None) else ''
+        tags = ','.join([t.name for t in getattr(h, 'tags', [])]) if getattr(h, 'tags', None) else ''
+        categories = ','.join(h.snmp_categories) if getattr(h, 'snmp_categories', None) else ''
+        template = h.template if hasattr(h, 'template') else ''  # sécurité si champ manquant
+
+        writer.writerow([
+            h.hostname or '',
+            h.description or '',
+            group_name,
+            h.ip,
+            h.port,
+            template,
+            tags,
+            h.snmp_community,
+            categories
+        ])
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment;filename=hosts_export.csv"}
+    )
+
 
 @app.get("/hosts/import/template")
 @login_required

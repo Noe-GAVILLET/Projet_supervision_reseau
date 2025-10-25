@@ -46,10 +46,23 @@
                 Devices
               </a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">🔍 Rechercher un device</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">🧾 Logs SNMP</a></li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('hosts_search') }}">
+                    🔍 Rechercher un device
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('view_poller_log') }}">
+                    📡 Poller Logs
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">
+                    🧾 SNMP Logs
+                  </a>
+                </li>
               </ul>
-            </li>
+</li>
 
             <!-- Health -->
             <li class="nav-item dropdown">

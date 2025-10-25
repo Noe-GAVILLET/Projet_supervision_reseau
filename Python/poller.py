@@ -6,6 +6,26 @@ from snmp_utils import get_metrics
 from db_utils import upsert_current_metric, open_alert, resolve_alert
 from seuils import check_host_reachability, detect_interface_changes, check_thresholds
 from models import CurrentMetric, Measurement, Alert
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
+# --- Logger dédié au poller ---
+os.makedirs("logs", exist_ok=True)
+poller_logger = logging.getLogger("poller")
+
+if not poller_logger.handlers:
+    handler = RotatingFileHandler(
+        "logs/poller.log", maxBytes=2*1024*1024, backupCount=2, encoding="utf-8"
+    )
+    formatter = logging.Formatter(
+        "[%(asctime)s] [poller] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    handler.setFormatter(formatter)
+    poller_logger.addHandler(handler)
+    poller_logger.addHandler(logging.StreamHandler())  # 🔹 aussi dans le terminal
+    poller_logger.setLevel(logging.INFO)
 
 # Cache mémoire des statuts connus
 HOST_STATUS_CACHE = {}
@@ -17,9 +37,13 @@ SNMP_UP_MSG = "SNMP rétabli ✅"
 # ==============================================================
 # 🔹 LOGGER STANDARDISÉ
 # ==============================================================
-def log_poller(level: str, message: str):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [poller] {level} {message}")
+def log_poller(icon: str, message: str):
+    """
+    Écrit les logs dans poller.log et dans la console avec le format habituel.
+    Exemple : log_poller("📡", "Scanning 2 hosts...")
+    """
+    formatted = f"{icon} {message}"
+    poller_logger.info(formatted)
 
 
 def _normalize_categories(raw):

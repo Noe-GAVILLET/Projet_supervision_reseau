@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import Optional
 from models import Measurement
 from database import db
-
+import logging
+logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # 🔹 Libellés lisibles pour la catégorie "system"
 # ─────────────────────────────────────────────

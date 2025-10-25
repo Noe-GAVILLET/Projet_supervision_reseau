@@ -5,6 +5,8 @@ from models import Measurement, Alert, Host
 from datetime import datetime, timedelta
 from database import db
 from seuils import check_thresholds
+import logging
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("api_poll", __name__, url_prefix="/api/poll")
 

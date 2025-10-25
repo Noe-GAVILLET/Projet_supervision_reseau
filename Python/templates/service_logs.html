@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">📡 Journaux du Poller SNMP</h3>
+    <div>
+      <a href="{{ url_for('view_poller_log') }}" class="btn btn-outline-secondary btn-sm me-2">
+        🔄 Actualiser
+      </a>
+      <a href="{{ url_for('admin') }}" class="btn btn-primary btn-sm">Retour</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <strong>Dernières entrées du poller</strong>
+      <small class="text-muted">(rafraîchies automatiquement toutes les 10 secondes)</small>
+    </div>
+
+    <div class="card-body p-0">
+      <table class="table table-hover align-middle mb-0" id="log-table">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 200px;">Horodatage</th>
+            <th style="width: 100px;">Type</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+          {% set color = "" %}
+          {% if "✅" in line %}
+            {% set color = "table-success" %}
+          {% elif "⚠️" in line %}
+            {% set color = "table-warning" %}
+          {% elif "❌" in line or "💥" in line %}
+            {% set color = "table-danger" %}
+          {% elif "📊" in line or "📡" in line %}
+            {% set color = "table-info" %}
+          {% endif %}
+          <tr class="{{ color }}">
+            <td><code>{{ line.split(']')[0].strip('[') }}</code></td>
+            <td>
+              {% if "✅" in line %}✅ OK
+              {% elif "⚠️" in line %}⚠️ Alerte
+              {% elif "❌" in line %}❌ Erreur
+              {% elif "💥" in line %}💥 Exception
+              {% elif "📊" in line %}📊 Statut
+              {% elif "📡" in line %}📡 Polling
+              {% else %}ℹ️ Info{% endif %}
+            </td>
+            <td><code>{{ line.split('poller]')[-1].strip() }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 🔄 Auto-refresh du tableau -->
+<script>
+  setInterval(() => {
+    fetch(window.location.href)
+      .then(resp => resp.text())
+      .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newBody = doc.querySelector('#log-table tbody');
+        if (newBody) document.querySelector('#log-table tbody').innerHTML = newBody.innerHTML;
+      })
+      .catch(err => console.error("Erreur de mise à jour logs poller :", err));
+  }, 10000);
+</script>
+{% endblock %}
