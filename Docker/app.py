@@ -315,16 +315,23 @@ def healthz():
 @app.route("/logs/poller")
 @login_required
 def view_poller_log():
-    """Affiche les logs du poller/scheduler SNMP."""
-    log_path = os.path.join("logs", "poller.log")
+    """Affiche uniquement les lignes [poller] du supervision.log."""
+    log_path = os.path.join("logs", "supervision.log")
 
     if not os.path.exists(log_path):
         return render_template("service_logs.html", lines=["Aucun log trouvé."])
 
+    # Lire les dernières 1000 lignes pour éviter les gros fichiers
     with open(log_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()[-300:]  # 🔹 dernières 300 lignes seulement
+        lines = f.readlines()[-1000:]
 
-    return render_template("service_logs.html", lines=lines)
+    # Ne garder que celles qui contiennent [poller]
+    filtered = [l for l in lines if "[poller]" in l]
+
+    if not filtered:
+        filtered = ["Aucune entrée [poller] trouvée dans supervision.log."]
+
+    return render_template("service_logs.html", lines=filtered)
 
 @app.route("/hosts/<int:host_id>")
 @login_required

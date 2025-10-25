@@ -7,25 +7,7 @@ from db_utils import upsert_current_metric, open_alert, resolve_alert
 from seuils import check_host_reachability, detect_interface_changes, check_thresholds
 from models import CurrentMetric, Measurement, Alert
 import logging
-from logging.handlers import RotatingFileHandler
-import os
-
-# --- Logger dédié au poller ---
-os.makedirs("logs", exist_ok=True)
-poller_logger = logging.getLogger("poller")
-
-if not poller_logger.handlers:
-    handler = RotatingFileHandler(
-        "logs/poller.log", maxBytes=2*1024*1024, backupCount=2, encoding="utf-8"
-    )
-    formatter = logging.Formatter(
-        "[%(asctime)s] [poller] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    handler.setFormatter(formatter)
-    poller_logger.addHandler(handler)
-    poller_logger.addHandler(logging.StreamHandler())  # 🔹 aussi dans le terminal
-    poller_logger.setLevel(logging.INFO)
+poller_logger = logging.getLogger(__name__)
 
 # Cache mémoire des statuts connus
 HOST_STATUS_CACHE = {}
