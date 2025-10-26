@@ -54,6 +54,12 @@ def poll_host_metrics(app, db, Host, Alert):
         hosts = Host.query.all()
         log_poller("📡", f"Scanning {len(hosts)} hosts...")
 
+        current_ids = {h.id for h in hosts}
+        for cached_id in list(HOST_STATUS_CACHE.keys()):
+            if cached_id not in current_ids:
+                HOST_STATUS_CACHE.pop(cached_id, None)
+                log_poller("🗑️", f" Host ID {cached_id} supprimé du cache (n’existe plus en BDD)")
+
         for host in hosts:
             host_id = host.id
             hostname = host.hostname
@@ -118,16 +124,29 @@ def poll_host_metrics(app, db, Host, Alert):
 
                 if new_status == "down":
                     open_alert(db, Alert, host_id, "critical",
-                               f"{SNMP_DOWN_MSG} sur {hostname} ({host.ip})")
+                            f"{SNMP_DOWN_MSG} sur {hostname} ({host.ip})")
                     log_poller("❌", f"{hostname} DOWN (ping ou SNMP KO) [{host.ip}]")
-                else:
+
+                elif new_status == "up":
                     resolve_alert(db, Alert, host_id, category="SNMP", message_contains="injoignable")
 
-                    # 📨 Alerte d'information (rétablissement)
-                    open_alert(db, Alert, host_id, "info",
-                            f"{SNMP_UP_MSG} sur {hostname} ({host.ip})")
+                    # 🔹 Cas 1 : Unknown → Up → première connexion, pas de mail
+                    if previous_status == "unknown":
+                        alert = Alert(
+                            host_id=host_id,
+                            severity="info",
+                            message=f"Connexion SNMP établie avec succès sur {hostname} ({host.ip})",
+                            created_at=datetime.utcnow()
+                        )
+                        db.session.add(alert)
+                        db.session.commit()
+                        log_poller("🟢", f"{hostname} ajouté avec succès [{host.ip}] (première détection)")
 
-                    log_poller("✅", f"Host {hostname} back UP [{host.ip}]")
+                    # 🔹 Cas 2 : Down → Up → vraie reprise → mail envoyé
+                    else:
+                        open_alert(db, Alert, host_id, "info",
+                                f"{SNMP_UP_MSG} sur {hostname} ({host.ip})")
+                        log_poller("✅", f"Host {hostname} back UP [{host.ip}]")
 
             # 5️⃣ Résumé final par hôte
             if new_status == "up":

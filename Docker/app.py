@@ -56,10 +56,10 @@ flask_logger.addHandler(console_handler)
 # Config Flask + DB 
 # -----------------------------------------------------------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "4tre84t9ret4ert")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecret")
 
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
-DB_PORT = os.getenv("DB_PORT", "3002")
+DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "sqluser_password")
@@ -294,6 +294,19 @@ def alerts():
     alerts = query.order_by(Alert.created_at.desc()).all()
 
     return render_template("alerts.html", alerts=alerts, severity=severity, q=q, status=status)
+
+@app.route("/alerts/delete/<int:alert_id>", methods=["POST"])
+def delete_alert(alert_id):
+    alert = Alert.query.get(alert_id)
+    if not alert:
+        abort(404, "Alerte introuvable")
+
+    db.session.delete(alert)
+    db.session.commit()
+
+    flash("Alerte supprimée avec succès ✅", "success")
+    return redirect(url_for("alerts"))
+
 
 @app.route("/healthz")
 def healthz():
@@ -975,14 +988,6 @@ try:
 except Exception as e:
     # Evite de casser l'app si le blueprint n'est pas encore créé
     app.logger.warning(f"api_poll blueprint non chargé: {e}")
-
-# ----------------------------------------------------------------------------- 
-# Scheduler SNMP (démarre après les modèles)
-# -----------------------------------------------------------------------------
-from poller import start_scheduler
-
-with app.app_context():
-    start_scheduler(app, db, Host, Alert)
 
 # -----------------------------------------------------------------------------
 # Contexte global pour la navbar

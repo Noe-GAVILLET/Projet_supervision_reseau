@@ -7,7 +7,6 @@ __pycache__/
 Thumbs.db
 
 # Secrets / runtime
-.env
 *.log
 logs/
 instance/
