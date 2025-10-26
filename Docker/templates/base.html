@@ -29,6 +29,7 @@
 
         <div class="collapse navbar-collapse" id="navbarMain">
           {% if current_user %}
+          <!-- Menu gauche -->
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
 
             <!-- Overview -->
@@ -42,27 +43,13 @@
 
             <!-- Devices -->
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                Devices
-              </a>
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Devices</a>
               <ul class="dropdown-menu">
-                <li>
-                  <a class="dropdown-item" href="{{ url_for('hosts_search') }}">
-                    🔍 Rechercher un device
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{{ url_for('view_poller_log') }}">
-                    📡 Poller Logs
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">
-                    🧾 SNMP Logs
-                  </a>
-                </li>
+                <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">🔍 Rechercher un device</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('view_poller_log') }}">📡 Poller Logs</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">🧾 SNMP Logs</a></li>
               </ul>
-</li>
+            </li>
 
             <!-- Health -->
             <li class="nav-item dropdown">
@@ -77,17 +64,20 @@
 
             <!-- Alertes -->
             <li class="nav-item position-relative">
-              <a class="nav-link" href="{{ url_for('alerts') }}">
-                <i class="bi bi-bell"></i> Alertes
+              <a class="nav-link d-flex align-items-center" href="{{ url_for('alerts') }}">
+                <i class="bi bi-bell me-1"></i> Alertes
                 {% if alert_count and alert_count > 0 %}
-                  <span class="badge bg-danger badge-alert">{{ alert_count }}</span>
+                  <span class="badge rounded-pill 
+                    {% if has_critical_alerts %}bg-danger{% else %}bg-warning text-dark{% endif %}"
+                    style="position: absolute; top: 2px; right: -10px; font-size: 0.65rem; padding: 0.35em 0.5em;">
+                    {{ alert_count }}
+                  </span>
                 {% endif %}
               </a>
             </li>
-          </ul>
-          {% endif %}
+          </ul>  <!-- ✅ fermeture du premier <ul> -->
 
-          <!-- Droite : Compte -->
+          <!-- Menu droite -->
           <ul class="navbar-nav ms-auto">
             {% if current_user %}
               <li class="nav-item dropdown">
@@ -113,8 +103,8 @@
               </li>
             {% endif %}
           </ul>
+          {% endif %}  <!-- ✅ fermeture du if global -->
         </div>
-
       </div>
     </nav>
 
@@ -131,6 +121,66 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    setInterval(() => {
+      fetch("/api/alerts/active_count")
+        .then(resp => resp.json())
+        .then(data => {
+          const badge = document.querySelector(".badge-alert");
+          if (badge) {
+            if (data.count > 0) {
+              badge.textContent = data.count;
+              badge.className = "badge rounded-pill position-absolute top-0 start-100 translate-middle " + 
+                (data.has_critical ? "bg-danger" : "bg-warning text-dark");
+            } else {
+              badge.remove();
+            }
+          }
+        })
+        .catch(() => {});
+    }, 15000);
+    </script>
+    <script>
+    let lastAlertId = 0; // empêche de réafficher les anciennes
+
+    function showToast(alert) {
+      const colorMap = {
+        info: "bg-info text-dark",
+        warning: "bg-warning text-dark",
+        critical: "bg-danger text-white"
+      };
+      const colorClass = colorMap[alert.severity] || "bg-secondary text-white";
+
+      const toast = document.createElement("div");
+      toast.className = `toast align-items-center ${colorClass} border-0 position-fixed top-0 end-0 m-3`;
+      toast.style.zIndex = 2000;
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">
+            <strong>${alert.host}</strong><br>${alert.message}
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      document.body.appendChild(toast);
+      const bsToast = new bootstrap.Toast(toast, { delay: 8000 });
+      bsToast.show();
+    }
+
+    setInterval(() => {
+      fetch("/api/alerts/latest")
+        .then(r => r.json())
+        .then(alerts => {
+          alerts.forEach(a => {
+            if (a.id > lastAlertId) {
+              lastAlertId = a.id;
+              showToast(a);
+            }
+          });
+        })
+        .catch(err => console.error("Erreur récupération alertes :", err));
+    }, 10000);
+    </script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   </body>
 </html>

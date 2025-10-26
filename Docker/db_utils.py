@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -95,59 +95,82 @@ def upsert_current_metric(db, host_id, oid, metric, value, meta=None):
     db.session.commit()
 
 
-def open_alert(db, Alert, host_id, severity, message):
+def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
     """
-    Crée une alerte si aucune alerte identique (même host, même severité, même message) n'est déjà ouverte,
-    puis envoie un e-mail formaté avec hostname + IP.
+    Crée une alerte si aucune alerte identique (même host + même "type" de message)
+    n'existe récemment. N'envoie un mail que pour les CRITICAL, et applique un
+    cooldown anti-spam (par défaut 10 min) même si l'ancienne alerte est close.
     """
     from models import Host
-
     host = Host.query.get(host_id)
     hostname = host.hostname if host else f"Host#{host_id}"
     host_ip = host.ip if host else "IP inconnue"
 
-    # Évite le spam: pas de doublon si même alerte déjà ouverte
-    existing = Alert.query.filter_by(
-        host_id=host_id,
-        severity=severity,
-        message=message,
-        acknowledged_at=None,
-        resolved_at=None
-    ).first()
-    if existing:
-        return existing
+    # 🚫 Pas de mail pour les warnings
+    send_email = (severity == "critical")
 
+    # Clé de similarité "douce" : 1er mot du message (ex: "CPU", "RAM", "Stockage", "SNMP")
+    # -> garde ton comportement actuel mais un poil plus robuste.
+    first_word = (message or "").strip().split()[0] if message else ""
+    now = datetime.utcnow()
+    since = now - timedelta(minutes=cooldown_minutes)
+
+    # 🔍 1) Si une alerte identique NON RÉSOLUE existe déjà → on ne spam pas
+    existing_open = (
+        Alert.query.filter_by(host_id=host_id, severity=severity)
+        .filter(Alert.resolved_at.is_(None))
+        .filter(Alert.message.like(f"{first_word}%"))
+        .first()
+    )
+    if existing_open:
+        logger.debug(f"[alerte] Ignorée (déjà ouverte) : {message}")
+        return existing_open
+
+    # ⏳ 2) Cooldown : si une alerte similaire a été créée récemment (même type, même severité)
+    #    on recrée l'alerte pour l'historique uniquement si tu le souhaites, mais SANS mail.
+    last_similar = (
+        Alert.query.filter_by(host_id=host_id, severity=severity)
+        .filter(Alert.message.like(f"{first_word}%"))
+        .order_by(Alert.created_at.desc())
+        .first()
+    )
+    if last_similar and last_similar.created_at >= since:
+        # Cooldown actif → pas d'e-mail
+        send_email = False
+        logger.info(f"[alerte] ⏱️ Cooldown actif ({cooldown_minutes} min) pour {hostname} – pas d'e-mail.")
+
+    # ✅ 3) Création de la nouvelle alerte (on conserve l'historique dans /alerts)
     alert = Alert(
         host_id=host_id,
         severity=severity,
         message=message,
-        created_at=datetime.utcnow()
+        created_at=now
     )
     db.session.add(alert)
     db.session.commit()
 
     print(f"[alerte] 🔔 Nouvelle alerte {severity.upper()} sur {hostname} ({host_ip}) : {message}")
 
-    # ✅ Sujet/texte clairs avec hostname + IP
-    subject = f"[{severity.upper()}] {hostname} ({host_ip}) — Alerte SNMP"
-    body = (
-        "Une nouvelle alerte a été générée :\n\n"
-        f"Gravité : {severity.upper()}\n"
-        f"Hôte : {hostname} ({host_ip})\n"
-        f"Détails : {message}\n"
-    )
-    # Envoi aux abonnés (ou fallback admin) via la fonction locale
-    send_alert_email(subject, body)
+    # 📧 4) Envoi e-mail uniquement pour CRITICAL, et si cooldown non actif
+    if send_email and severity == "critical":
+        subject = f"[CRITICAL] {hostname} ({host_ip}) — Alerte SNMP"
+        body = (
+            f"Une alerte critique a été détectée :\n\n"
+            f"Hôte : {hostname} ({host_ip})\n"
+            f"Gravité : {severity.upper()}\n"
+            f"Détails : {message}\n"
+        )
+        send_alert_email(subject, body)
+
     return alert
 
 
 def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
     """
-    Marque comme résolues les alertes ouvertes de ce host (optionnellement filtrées par 'message_contains'),
-    puis envoie un e-mail de rétablissement générique (pas “CPU”), avec hostname + IP.
+    Marque comme résolues les alertes ouvertes pour ce host (optionnellement filtrées),
+    puis envoie un e-mail de rétablissement uniquement si une alerte critique était concernée.
     """
     from models import Host
-
     host = Host.query.get(host_id)
     hostname = host.hostname if host else f"Host#{host_id}"
     host_ip = host.ip if host else "IP inconnue"
@@ -164,21 +187,27 @@ def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
         return
 
     now = datetime.utcnow()
+    severities = {a.severity for a in alerts}
+
     for a in alerts:
         a.resolved_at = now
         db.session.add(a)
     db.session.commit()
 
-    # ✅ Mail de rétablissement générique (plus de “Catégorie : CPU” forcée)
-    subject = f"[RÉTABLIE] {hostname} ({host_ip}) — Alerte résolue"
-    details = "\n".join(f"- {a.severity.upper()} : {a.message}" for a in alerts)
-    cat_line = f"Catégorie : {category}\n" if category else ""
-    body = (
-        "Les alertes suivantes ont été résolues :\n\n"
-        f"Hôte : {hostname} ({host_ip})\n"
-        f"{cat_line}"
-        f"{details}\n\n"
-        f"Rétablissement : {now} UTC"
-    )
-    send_alert_email(subject, body)
+    print(f"[alerte] ✅ {len(alerts)} alerte(s) résolue(s) pour host {host_id}")
+
+    # 📧 Envoi mail uniquement si une alerte critique était concernée
+    if "critical" in severities:
+        subject = f"[RÉTABLIE] {hostname} ({host_ip}) — Alerte critique résolue"
+        details = "\n".join(f"- {a.severity.upper()} : {a.message}" for a in alerts)
+        cat_line = f"Catégorie : {category}\n" if category else ""
+        body = (
+            f"Les alertes suivantes ont été résolues :\n\n"
+            f"Hôte : {hostname} ({host_ip})\n"
+            f"{cat_line}"
+            f"{details}\n\n"
+            f"Rétablissement : {now} UTC"
+        )
+        send_alert_email(subject, body)
+
     print(f"[alerte] ✅ {len(alerts)} alerte(s) résolue(s) pour host {host_id}")

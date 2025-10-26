@@ -907,6 +907,30 @@ def category_overview(category):
 
     return render_template("category_view.html", category=category, hosts=host_data)
 
+@app.route("/api/alerts/active_count")
+def api_alert_count():
+    from models import Alert
+    count = Alert.query.filter(Alert.resolved_at == None).count()
+    has_critical = Alert.query.filter(Alert.resolved_at == None, Alert.severity == "critical").count() > 0
+    return jsonify({"count": count, "has_critical": has_critical})
+
+@app.route("/api/alerts/latest")
+def api_alerts_latest():
+    """Retourne les alertes actives récentes (moins de 1 min)."""
+    since = datetime.utcnow() - timedelta(seconds=60)
+    alerts = Alert.query.filter(Alert.created_at >= since).filter(Alert.resolved_at == None).all()
+
+    return jsonify([
+        {
+            "id": a.id,
+            "severity": a.severity,
+            "message": a.message,
+            "host": a.host.hostname if a.host else "Inconnu",
+            "created_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        for a in alerts
+    ])
+
 # ---------- Hosts ----------
 @app.route("/hosts/new", methods=["GET", "POST"])
 @login_required
@@ -1050,8 +1074,31 @@ def inject_user():
     """Rend current_user et current_role disponibles dans tous les templates."""
     return dict(current_user=g.user, current_role=g.role)
 
+@app.context_processor
 def inject_severity_utils():
     return dict(get_severity=get_severity)
+
+@app.context_processor
+def inject_alert_info():
+    """Injecte dans tous les templates le nombre d’alertes actives importantes (hors info)."""
+    from models import Alert
+
+    # On ignore les alertes "info"
+    active_alerts = Alert.query.filter(
+        Alert.resolved_at.is_(None),
+        Alert.severity.in_(["warning", "critical"])
+    ).count()
+
+    has_critical_alerts = Alert.query.filter(
+        Alert.resolved_at.is_(None),
+        Alert.severity == "critical"
+    ).count() > 0
+
+    return dict(
+        alert_count=active_alerts,
+        has_critical_alerts=has_critical_alerts
+    )
+
 
 # -----------------------------------------------------------------------------
 # Lancement

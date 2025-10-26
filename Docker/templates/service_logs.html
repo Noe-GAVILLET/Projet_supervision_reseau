@@ -27,7 +27,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for line in lines %}
+          {% for line in lines|reverse %}
           {% set color = "" %}
           {% if "✅" in line %}
             {% set color = "table-success" %}
