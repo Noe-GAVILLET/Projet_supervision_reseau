@@ -350,7 +350,7 @@ def view_poller_log():
 @login_required
 def host_view(host_id: int):
     from models import CurrentMetric
-    from snmp_utils import SYSTEM_OID_LABELS, format_sysuptime  # 🔽 Ajoute cette ligne
+    from snmp_utils import SYSTEM_OID_LABELS, format_sysuptime
 
     host = db.session.get(Host, host_id)
     if not host:
@@ -361,7 +361,7 @@ def host_view(host_id: int):
     error = None
 
     try:
-        # 🔹 Tentative d’interrogation SNMP live
+        # 🔹 Essai d’interrogation SNMP live
         if host.snmp_categories:
             for category in host.snmp_categories:
                 metrics[category] = get_metrics(
@@ -373,7 +373,7 @@ def host_view(host_id: int):
     except Exception as e:
         error = f"Hôte injoignable ou timeout SNMP : {e}"
 
-    # 🔹 Si le live échoue → on récupère depuis la BDD
+    # 🔹 Si le live échoue → fallback BDD
     if not metrics:
         rows = CurrentMetric.query.filter_by(host_id=host.id).all()
         if rows:
@@ -383,21 +383,36 @@ def host_view(host_id: int):
         else:
             error = error or "Aucune métrique disponible (host jamais contacté)."
 
-    # 🔸 Extraire system_data lisible à partir des OIDs de la catégorie "system"
+    # 🔸 Extraction system_data lisible
     if "system" in metrics:
         for oid, value in metrics["system"].items():
             label = SYSTEM_OID_LABELS.get(oid, oid)
-            if oid == '1.3.6.1.2.1.1.3.0':  # uptime
+            if oid == "1.3.6.1.2.1.1.3.0":  # sysUpTime
                 value = format_sysuptime(value)
             system_data.append((label, value))
+
+    # 🔸 Seuils personnalisés ou valeurs par défaut
+    thresholds = {
+        "cpu": {"warning": 80, "critical": 90},
+        "ram": {"warning": 85, "critical": 95},
+        "storage": {"warning": 85, "critical": 95},
+    }
+    if host.thresholds and isinstance(host.thresholds, dict):
+        for cat, vals in host.thresholds.items():
+            if cat in thresholds and isinstance(vals, dict):
+                thresholds[cat].update(
+                    {k: v for k, v in vals.items() if isinstance(v, (int, float))}
+                )
 
     return render_template(
         "host_detail.html",
         host=host,
         metrics=metrics,
         system_data=system_data,
-        error=error
+        error=error,
+        thresholds=thresholds,  # 🔹 envoi au template
     )
+
 
 @app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -413,14 +428,14 @@ def host_edit(host_id: int):
         hostname = request.form.get("hostname", "").strip()
         description = request.form.get("description", "").strip()
         group_id = request.form.get("group_id") or None
-        template_id = request.form.get("template_id") or None  # ok si tu gardes le champ
+        template_id = request.form.get("template_id") or None
         ip = request.form.get("ip", "").strip()
         port = request.form.get("port", "161").strip()
         tags_raw = request.form.get("tags", "").strip()
 
         # SNMP v2c
         snmp_community = request.form.get("snmp_community", "public").strip()
-        raw_categories = request.form.getlist("snmp_categories[]")  # <<< IMPORTANT
+        raw_categories = request.form.getlist("snmp_categories[]")
         allowed = {"system", "cpu", "ram", "storage", "interfaces"}
         snmp_categories = [c for c in raw_categories if c in allowed]
         if not snmp_categories:
@@ -430,18 +445,15 @@ def host_edit(host_id: int):
         if not hostname:
             flash("Hostname obligatoire.", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
-
         exists = Host.query.filter(Host.hostname == hostname, Host.id != host.id).first()
         if exists:
             flash("Un autre host utilise déjà ce hostname.", "warning")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
-
         try:
             ipaddress.ip_address(ip)
         except ValueError:
             flash("Adresse IP invalide.", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
-
         try:
             port = int(port)
             if port < 1 or port > 65535:
@@ -450,7 +462,7 @@ def host_edit(host_id: int):
             flash("Port invalide (1-65535).", "danger")
             return render_template("host_edit.html", host=host, groups=groups, templates=templates)
 
-        # Appliquer les modifications (affecter de NOUVELLES valeurs)
+        # Application des modifications
         host.hostname = hostname
         host.description = description
         host.ip = ip
@@ -458,7 +470,15 @@ def host_edit(host_id: int):
         host.group_id = int(group_id) if group_id else None
         host.template_id = int(template_id) if template_id else None
         host.snmp_community = snmp_community or "public"
-        host.snmp_categories = list(snmp_categories)  # <<< nouvelle liste pour bien “dirty” la colonne JSON
+        host.snmp_categories = list(snmp_categories)
+
+        # --- 🔹 Mise à jour des seuils personnalisés ---
+        thresholds = {}
+        for cat in ["cpu", "ram", "storage"]:
+            warn = request.form.get(f"threshold_{cat}_warning", type=int)
+            crit = request.form.get(f"threshold_{cat}_critical", type=int)
+            thresholds[cat] = {"warning": warn or 85, "critical": crit or 90}
+        host.thresholds = thresholds
 
         # Tags (remplacement complet)
         new_names = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -477,7 +497,6 @@ def host_edit(host_id: int):
     # Pré-remplir le champ tags
     tags_value = ", ".join(t.name for t in host.tags) if host.tags else ""
     return render_template("host_edit.html", host=host, groups=groups, templates=templates, tags_value=tags_value)
-
 
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
@@ -957,13 +976,11 @@ def host_new():
         if Host.query.filter_by(hostname=hostname).first():
             flash("Un host avec ce hostname existe déjà.", "warning")
             return render_template("host_new.html", groups=groups, templates=templates)
-
         try:
             ipaddress.ip_address(ip)
         except ValueError:
             flash("Adresse IP invalide.", "danger")
             return render_template("host_new.html", groups=groups, templates=templates)
-
         try:
             port = int(port)
             if port < 1 or port > 65535:
@@ -972,6 +989,7 @@ def host_new():
             flash("Port invalide (1-65535).", "danger")
             return render_template("host_new.html", groups=groups, templates=templates)
 
+        # Création de l’hôte
         host = Host(
             hostname=hostname,
             description=description,
@@ -983,6 +1001,14 @@ def host_new():
         # SNMP v2c
         host.snmp_community = snmp_community or "public"
         host.snmp_categories = snmp_categories or ["system"]
+
+        # --- 🔹 Seuils personnalisés ---
+        thresholds = {}
+        for cat in ["cpu", "ram", "storage"]:
+            warn = request.form.get(f"threshold_{cat}_warning", type=int)
+            crit = request.form.get(f"threshold_{cat}_critical", type=int)
+            thresholds[cat] = {"warning": warn or 85, "critical": crit or 90}
+        host.thresholds = thresholds
 
         # Tags (séparés par des virgules)
         tag_names = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -998,6 +1024,7 @@ def host_new():
         return redirect(url_for("admin"))
 
     return render_template("host_new.html", groups=groups, templates=templates)
+
 
 
 

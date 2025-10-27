@@ -56,6 +56,7 @@ class Host(db.Model):
     status = db.Column(db.String(20), default="unknown")
     snmp_community = db.Column(db.String(128), nullable=True, default="public")
     snmp_categories = db.Column(db.JSON, nullable=True)
+    thresholds = db.Column(db.JSON, nullable=True, default={})
 
     group_id = db.Column(db.Integer, db.ForeignKey("groups.id"))
     template_id = db.Column(db.Integer, db.ForeignKey("templates.id"))

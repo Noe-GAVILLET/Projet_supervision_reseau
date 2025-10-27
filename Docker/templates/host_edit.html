@@ -1,81 +1,147 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h4 class="mb-0">Modifier un host</h4>
-    <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0">Modifier un host</h4>
+  <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
+</div>
+
+<form method="post" class="col-12 col-lg-8">
+  <div class="row g-3">
+    <!-- Infos de base -->
+    <div class="col-md-6">
+      <label class="form-label">Hostname *</label>
+      <input name="hostname" class="form-control" value="{{ host.hostname }}" required />
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Adresse IP *</label>
+      <input name="ip" class="form-control" value="{{ host.ip }}" required />
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Port</label>
+      <input name="port" class="form-control" value="{{ host.port }}" />
+    </div>
+    <div class="col-md-8">
+      <label class="form-label">Description</label>
+      <input name="description" class="form-control" value="{{ host.description or '' }}" />
+    </div>
+
+    <!-- Groupe / Type d’équipement -->
+    <div class="col-md-6">
+      <label class="form-label">Groupe / Type d’équipement</label>
+      <div class="d-flex gap-2">
+        <select name="group_id" class="form-select">
+          <option value="">— Aucun —</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}" {% if host.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+        <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
+      </div>
+      <div class="form-text">Modifie le type d’OIDs SNMP collectés pour cet équipement.</div>
+    </div>
+
+    <!-- Communauté SNMP -->
+    <div class="col-md-6">
+      <label class="form-label">Communauté SNMP *</label>
+      <input name="snmp_community" class="form-control" value="{{ host.snmp_community or 'public' }}" required />
+    </div>
+
+    <!-- Catégories SNMP -->
+    <div class="col-12">
+      <label class="form-label fw-bold">Catégories SNMP</label>
+      <div class="d-flex flex-wrap gap-3">
+        {% set categories = ["system", "cpu", "ram", "storage", "interfaces"] %}
+        {% set selected = host.snmp_categories or [] %}
+        {% for cat in categories %}
+        <div class="form-check">
+          <input class="form-check-input snmp-cat" type="checkbox" name="snmp_categories[]" value="{{ cat }}"
+                 id="cat-{{ cat }}" {% if cat in selected %}checked{% endif %}>
+          <label class="form-check-label" for="cat-{{ cat }}">{{ cat|capitalize }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-text">Cochez une ou plusieurs catégories à superviser.</div>
+    </div>
+
+    <!-- 🔹 Seuils personnalisés dynamiques -->
+    <div class="col-12 mt-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header bg-light d-flex align-items-center justify-content-between">
+          <h6 class="mb-0 fw-bold text-secondary">Personnalisation des seuils (%)</h6>
+          <span class="text-muted small">S'affiche seulement pour les catégories cochées</span>
+        </div>
+        <div class="card-body">
+          <div id="thresholds-container" class="row g-4">
+            <!-- Les curseurs s’affichent ici dynamiquement -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    <div class="col-12 mt-3">
+      <label class="form-label">Tags (séparés par des virgules)</label>
+      <input name="tags" class="form-control" value="{{ tags_value }}" placeholder="prod, router, snmpv2" />
+    </div>
   </div>
 
-  <form method="post" class="col-12 col-lg-8">
-    <div class="row g-3">
-      <div class="col-md-6">
-        <label class="form-label">Hostname *</label>
-        <input name="hostname" class="form-control" value="{{ host.hostname }}" required />
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Adresse IP *</label>
-        <input name="ip" class="form-control" value="{{ host.ip }}" required />
-      </div>
+  <div class="mt-4">
+    <button class="btn btn-success" type="submit">Enregistrer</button>
+    <a class="btn btn-link" href="{{ url_for('admin') }}">Annuler</a>
+  </div>
+</form>
 
-      <div class="col-md-4">
-        <label class="form-label">Port</label>
-        <input name="port" class="form-control" value="{{ host.port }}" />
-      </div>
-      <div class="col-md-8">
-        <label class="form-label">Description</label>
-        <input name="description" class="form-control" value="{{ host.description or '' }}" />
-      </div>
+<!-- 🔸 Script JS dynamique -->
+<script>
+  const categoriesWithThresholds = ["cpu", "ram", "storage"];
+  const container = document.getElementById("thresholds-container");
 
-      <!-- Groupe / Type d’équipement -->
-      <div class="col-md-6">
-        <label class="form-label">Groupe / Type d’équipement</label>
-        <div class="d-flex gap-2">
-          <select name="group_id" class="form-select">
-            <option value="">— Aucun —</option>
-            <option value="linux" {% if host.group_id == 'linux' %}selected{% endif %}>Linux</option>
-            <option value="pfsense" {% if host.group_id == 'pfsense' %}selected{% endif %}>pfSense</option>
-            <option value="windows" {% if host.group_id == 'windows' %}selected{% endif %}>Windows</option>
-            {% for g in groups %}
-              <option value="{{ g.id }}" {% if host.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
-            {% endfor %}
-          </select>
-          <a class="btn btn-outline-secondary" href="{{ url_for('group_new') }}">+ Nouveau</a>
+  // 🔹 Seuils existants pour pré-remplir
+  const thresholdsData = JSON.parse(`{{ (host.thresholds or {}) | tojson | safe }}`);
+
+  function createThresholdBlock(cat) {
+    const vals = thresholdsData[cat] || { warning: 85, critical: 90 };
+    const block = document.createElement("div");
+    block.className = "col-md-4 threshold-block";
+    block.dataset.cat = cat;
+    block.innerHTML = `
+      <div class="border rounded-3 p-3 h-100 bg-light-subtle">
+        <h6 class="text-capitalize fw-semibold mb-3">${cat}</h6>
+        <div class="mb-2">
+          <label class="form-label small mb-1 text-muted">Warning</label>
+          <input type="range" name="threshold_${cat}_warning" class="form-range" min="0" max="100" value="${vals.warning}"
+                 oninput="this.nextElementSibling.textContent = this.value">
+          <span class="badge bg-warning text-dark">${vals.warning}</span>
         </div>
-        <div class="form-text">Modifie le type d’OIDs SNMP collectés pour cet équipement.</div>
-      </div>
-
-      <!-- Communauté SNMP -->
-      <div class="col-md-6">
-        <label class="form-label">Communauté SNMP *</label>
-        <input name="snmp_community" class="form-control" value="{{ host.snmp_community or 'public' }}" required />
-      </div>
-
-      <!-- Catégories SNMP -->
-      <div class="col-12">
-        <label class="form-label">Catégories SNMP</label>
-        <div class="d-flex flex-wrap gap-3">
-          {% set categories = ["system", "cpu", "ram", "storage", "interfaces"] %}
-          {% set selected = host.snmp_categories or [] %}
-          {% for cat in categories %}
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="snmp_categories[]" value="{{ cat }}" id="cat-{{ cat }}"
-                    {% if cat in selected %}checked{% endif %}>
-              <label class="form-check-label" for="cat-{{ cat }}">{{ cat|capitalize }}</label>
-            </div>
-          {% endfor %}
+        <div>
+          <label class="form-label small mb-1 text-muted">Critical</label>
+          <input type="range" name="threshold_${cat}_critical" class="form-range" min="0" max="100" value="${vals.critical}"
+                 oninput="this.nextElementSibling.textContent = this.value">
+          <span class="badge bg-danger">${vals.critical}</span>
         </div>
-        <div class="form-text">Cochez une ou plusieurs catégories à superviser.</div>
-      </div>
+      </div>`;
+    return block;
+  }
 
-      <!-- Tags -->
-      <div class="col-12">
-        <label class="form-label">Tags (séparés par des virgules)</label>
-        <input name="tags" class="form-control" value="{{ tags_value }}" placeholder="prod, router, snmpv2" />
-      </div>
-    </div>
+  function updateThresholdBlocks() {
+    const selected = [...document.querySelectorAll(".snmp-cat:checked")].map(i => i.value);
+    container.innerHTML = "";
+    for (const cat of selected) {
+      if (categoriesWithThresholds.includes(cat)) {
+        container.appendChild(createThresholdBlock(cat));
+      }
+    }
+  }
 
-    <div class="mt-4">
-      <button class="btn btn-success" type="submit">Enregistrer</button>
-      <a class="btn btn-link" href="{{ url_for('admin') }}">Annuler</a>
-    </div>
-  </form>
+  // Initialisation à l’ouverture
+  document.addEventListener("DOMContentLoaded", () => {
+    updateThresholdBlocks();
+  });
+
+  // Écoute les changements sur les cases à cocher
+  document.querySelectorAll(".snmp-cat").forEach(chk => {
+    chk.addEventListener("change", updateThresholdBlocks);
+  });
+</script>
 {% endblock %}

@@ -72,14 +72,16 @@
           <table class="table table-sm">
             <thead><tr><th>Cores</th><th>Charge</th></tr></thead>
             <tbody>
+              {% set warn = thresholds['cpu']['warning'] %}
+              {% set crit = thresholds['cpu']['critical'] %}
               {% for cpu_oid, load in values.items() %}
+                {% set pct = load|float %}
                 <tr>
                   <td>Core {{ loop.index }}</td>
                   <td>
-                    {% set pct = load|float %}
-                    {% if pct > 90 %}
+                    {% if pct > crit %}
                       <span class="badge bg-danger text-white">{{ pct }}%</span>
-                    {% elif pct > 80 %}
+                    {% elif pct > warn %}
                       <span class="badge bg-warning text-dark">{{ pct }}%</span>
                     {% else %}
                       <span class="badge bg-success text-white">{{ pct }}%</span>
@@ -96,6 +98,8 @@
           <table class="table table-sm">
             <thead><tr><th>Type</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
             <tbody>
+              {% set warn = thresholds['ram']['warning'] %}
+              {% set crit = thresholds['ram']['critical'] %}
               {% for name, info in values.items() %}
                 <tr>
                   <td>Physical memory</td>
@@ -119,9 +123,9 @@
                   </td>
                   <td>
                     {% set pct = info.pct|float %}
-                    {% if pct > 90 %}
+                    {% if pct > crit %}
                       <span class="badge bg-danger text-white">{{ pct }}%</span>
-                    {% elif pct > 80 %}
+                    {% elif pct > warn %}
                       <span class="badge bg-warning text-dark">{{ pct }}%</span>
                     {% else %}
                       <span class="badge bg-success text-white">{{ pct }}%</span>
@@ -134,48 +138,50 @@
         {% endif %}
 
         {% if category == "storage" %}
-        <table class="table table-sm">
-          <thead><tr><th>Nom</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
-          <tbody>
-            {% for name, info in values.items() %}
-              {% if ".pct" not in name %}
-                <tr>
-                  <td>{{ name }}</td>
-                  <td>
-                    {% if info.used >= 1073741824 %}
-                      {{ "%.1f"|format(info.used / 1073741824) }} Go
-                    {% elif info.used >= 1048576 %}
-                      {{ "%.1f"|format(info.used / 1048576) }} Mo
-                    {% else %}
-                      {{ "%.1f"|format(info.used / 1024) }} Ko
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if info.total >= 1073741824 %}
-                      {{ "%.1f"|format(info.total / 1073741824) }} Go
-                    {% elif info.total >= 1048576 %}
-                      {{ "%.1f"|format(info.total / 1048576) }} Mo
-                    {% else %}
-                      {{ "%.1f"|format(info.total / 1024) }} Ko
-                    {% endif %}
-                  </td>
-                  
-                  <td>
-                    {% set pct = info.pct|float %}
-                    {% if pct > 90 %}
-                      <span class="badge bg-danger text-white">{{ pct }}%</span>
-                    {% elif pct > 80 %}
-                      <span class="badge bg-warning text-dark">{{ pct }}%</span>
-                    {% else %}
-                      <span class="badge bg-success text-white">{{ pct }}%</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
+          <table class="table table-sm">
+            <thead><tr><th>Nom</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+            <tbody>
+              {% set warn = thresholds['storage']['warning'] %}
+              {% set crit = thresholds['storage']['critical'] %}
+              {% for name, info in values.items() %}
+                {% if ".pct" not in name %}
+                  <tr>
+                    <td>{{ name }}</td>
+                    <td>
+                      {% if info.used >= 1073741824 %}
+                        {{ "%.1f"|format(info.used / 1073741824) }} Go
+                      {% elif info.used >= 1048576 %}
+                        {{ "%.1f"|format(info.used / 1048576) }} Mo
+                      {% else %}
+                        {{ "%.1f"|format(info.used / 1024) }} Ko
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if info.total >= 1073741824 %}
+                        {{ "%.1f"|format(info.total / 1073741824) }} Go
+                      {% elif info.total >= 1048576 %}
+                        {{ "%.1f"|format(info.total / 1048576) }} Mo
+                      {% else %}
+                        {{ "%.1f"|format(info.total / 1024) }} Ko
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% set pct = info.pct|float %}
+                      {% if pct > crit %}
+                        <span class="badge bg-danger text-white">{{ pct }}%</span>
+                      {% elif pct > warn %}
+                        <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                      {% else %}
+                        <span class="badge bg-success text-white">{{ pct }}%</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+
 
       {% if category == "interfaces" %}
         <table class="table table-sm">
