@@ -115,11 +115,17 @@ def poll_host_metrics(app, db, Host, Alert):
 
             # 3️⃣ Statut global simplifié
             new_status = "down" if (not ping_ok or not snmp_ok) else "up"
+            if not host.last_status_change:
+                host.last_status_change = datetime.utcnow()
 
             # 4️⃣ Changement d’état
             if new_status != previous_status:
                 HOST_STATUS_CACHE[host_id] = new_status
                 host.status = new_status
+
+                # 🕓 Nouveau : enregistrer l’heure du changement d’état
+                host.last_status_change = datetime.utcnow()
+
                 db.session.commit()
 
                 if new_status == "down":
@@ -147,6 +153,7 @@ def poll_host_metrics(app, db, Host, Alert):
                         open_alert(db, Alert, host_id, "info",
                                 f"{SNMP_UP_MSG} sur {hostname} ({host.ip})")
                         log_poller("✅", f"Host {hostname} back UP [{host.ip}]")
+
 
             # 5️⃣ Résumé final par hôte
             if new_status == "up":

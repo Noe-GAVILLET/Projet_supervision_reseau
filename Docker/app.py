@@ -385,10 +385,17 @@ def host_view(host_id: int):
 
     # 🔸 Extraction system_data lisible
     if "system" in metrics:
+        seen_labels = set()
         for oid, value in metrics["system"].items():
             label = SYSTEM_OID_LABELS.get(oid, oid)
-            if oid == "1.3.6.1.2.1.1.3.0":  # sysUpTime
+
+            if oid == "1.3.6.1.2.1.1.3.0":
+                label = "Uptime"
                 value = format_sysuptime(value)
+
+            if label in seen_labels:
+                continue
+            seen_labels.add(label)
             system_data.append((label, value))
 
     # 🔸 Seuils personnalisés ou valeurs par défaut
@@ -515,11 +522,30 @@ def host_delete(host_id: int):
 @login_required
 def admin():
     from models import Host, Alert
-    from sqlalchemy import or_
 
-    # Liste complète des hôtes
+    # Liste complète des hôtes triés par nom
     hosts = Host.query.order_by(Host.hostname.asc()).all()
-    
+
+    # 🕓 Fonction utilitaire : durée depuis dernier changement
+    def get_uptime_str(host):
+        if not host.last_status_change:
+            return "—"
+        delta = datetime.utcnow() - host.last_status_change
+        total_seconds = int(delta.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        if hours > 0:
+            return f"depuis {hours}h{minutes:02d}m{seconds:02d}s"
+        elif minutes > 0:
+            return f"depuis {minutes}m{seconds:02d}s"
+        else:
+            return f"depuis {seconds}s"
+
+    # 🔹 Ajoute une propriété "uptime_str" à chaque host pour affichage
+    for h in hosts:
+        h.uptime_str = get_uptime_str(h)
 
     # Comptages par statut
     total_hosts = len(hosts)
@@ -544,7 +570,7 @@ def admin():
     except Exception:
         alerts = []
 
-    # Préparation du dictionnaire de stats (si besoin ailleurs)
+    # Dictionnaire global de stats
     stats = {
         "total_hosts": total_hosts,
         "up": hosts_up,
@@ -565,7 +591,6 @@ def admin():
         stats=stats,
         alerts=alerts
     )
-
 
 from datetime import datetime
 from werkzeug.security import generate_password_hash

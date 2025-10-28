@@ -54,6 +54,7 @@ class Host(db.Model):
     ip = db.Column(db.String(45), nullable=False)
     port = db.Column(db.Integer, nullable=False, default=161)
     status = db.Column(db.String(20), default="unknown")
+    last_status_change = db.Column(db.DateTime, nullable=True)
     snmp_community = db.Column(db.String(128), nullable=True, default="public")
     snmp_categories = db.Column(db.JSON, nullable=True)
     thresholds = db.Column(db.JSON, nullable=True, default={})

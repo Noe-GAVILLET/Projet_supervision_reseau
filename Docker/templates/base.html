@@ -141,7 +141,8 @@
     }, 15000);
     </script>
     <script>
-    let lastAlertId = 0; // empêche de réafficher les anciennes
+    let lastAlertId = 0; // ID le plus récent déjà affiché
+    window.activeToasts = []; // stockage des toasts actuellement visibles
 
     function showToast(alert) {
       const colorMap = {
@@ -151,9 +152,18 @@
       };
       const colorClass = colorMap[alert.severity] || "bg-secondary text-white";
 
+      // ID unique basé sur l'hôte + message
+      const toastId = `${alert.host}_${alert.message}`;
+      if (window.activeToasts.includes(toastId)) {
+        return; // 🔁 déjà affiché → on ignore
+      }
+      window.activeToasts.push(toastId);
+
+      // Création du toast
       const toast = document.createElement("div");
       toast.className = `toast align-items-center ${colorClass} border-0 position-fixed top-0 end-0 m-3`;
       toast.style.zIndex = 2000;
+      toast.style.minWidth = "320px";
       toast.innerHTML = `
         <div class="d-flex">
           <div class="toast-body">
@@ -162,9 +172,17 @@
           <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
       `;
+
       document.body.appendChild(toast);
+
       const bsToast = new bootstrap.Toast(toast, { delay: 8000 });
       bsToast.show();
+
+      // 🧹 Quand on le ferme → on le retire de la liste et du DOM
+      toast.addEventListener("hidden.bs.toast", () => {
+        window.activeToasts = window.activeToasts.filter(id => id !== toastId);
+        toast.remove();
+      });
     }
 
     setInterval(() => {
@@ -172,6 +190,7 @@
         .then(r => r.json())
         .then(alerts => {
           alerts.forEach(a => {
+            // Si c’est une nouvelle alerte non encore vue
             if (a.id > lastAlertId) {
               lastAlertId = a.id;
               showToast(a);

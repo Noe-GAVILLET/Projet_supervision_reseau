@@ -106,26 +106,37 @@
                   <span class="text-muted">-</span>
                 {% endif %}
               </td>
-              <td>
-                {% if h.tags %}
-                  {% for t in h.tags %}
-                    <span class="badge bg-secondary me-1">{{ t.name }}</span>
-                  {% endfor %}
-                {% else %}
-                  <span class="text-muted">-</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if h.status == 'up' %}
-                  <span class="badge bg-success"><i class="bi bi-check-circle"></i> UP</span>
-                {% elif h.status == 'warning' %}
-                  <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> WARNING</span>
-                {% elif h.status == 'down' %}
-                  <span class="badge bg-danger"><i class="bi bi-x-octagon"></i> DOWN</span>
-                {% else %}
-                  <span class="badge bg-secondary"><i class="bi bi-question-circle"></i> Unknown</span>
-                {% endif %}
-              </td>
+                <td>
+                  {% if h.tags %}
+                    {% for t in h.tags %}
+                      <span class="badge bg-secondary me-1">{{ t.name }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                <td class="align-middle">
+                  {% if h.status == 'up' %}
+                    <span class="badge bg-success me-2">
+                      <i class="bi bi-check-circle"></i> UP
+                    </span>
+                  {% elif h.status == 'warning' %}
+                    <span class="badge bg-warning text-dark me-2">
+                      <i class="bi bi-exclamation-triangle"></i> WARNING
+                    </span>
+                  {% elif h.status == 'down' %}
+                    <span class="badge bg-danger me-2">
+                      <i class="bi bi-x-octagon"></i> DOWN
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary me-2">
+                      <i class="bi bi-question-circle"></i> Unknown
+                    </span>
+                  {% endif %}
+
+                  {% if h.uptime_str and h.uptime_str != '—' %}
+                    <small class="text-muted">{{ h.uptime_str }}</small>
+                  {% endif %}
+                </td>
               <td class="text-end">
                 {% if h.status == 'down' %}
                   <button class="btn btn-sm btn-secondary me-1" disabled>Injoignable</button>
