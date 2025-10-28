@@ -49,16 +49,3 @@ Ouvre PowerShell **en administrateur** et exécute :
 ```powershell
 # Autoriser le trafic SNMP entrant
 netsh advfirewall firewall add rule name="SNMP" dir=in action=allow protocol=UDP localport=161
-
-## Résumé 
-
-| Étape | Action                            | Commande/Interface                                             |
-| ----- | --------------------------------- | -------------------------------------------------------------- |
-| 1     | Installer le service SNMP         | `Add-WindowsCapability -Online -Name "SNMP.Client~~~~0.0.1.0"` |
-| 2     | Configurer la communauté `public` | services.msc / registre                                        |
-| 3     | Autoriser tous les réseaux        | Coche “Accepter de n’importe quel hôte”                        |
-| 4     | Ouvrir le port UDP 161            | `netsh advfirewall firewall add rule ...`                      |
-| 5     | Redémarrer le service SNMP        | `Restart-Service SNMP`                                         |
-| 6     | Tester                            | `snmpwalk -v2c -c public <IP> 1.3.6.1.2.1.1`                   |
-
-
