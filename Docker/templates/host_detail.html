@@ -13,7 +13,18 @@
   <h4 class="mb-0">Détails du host : {{ host.hostname }}</h4>
   <div>
     {% if session.get('role') == 'admin' %}
-      <a class="btn btn-outline-secondary me-2" href="{{ url_for('host_edit', host_id=host.id) }}">Modifier</a>
+      <!-- Bouton SSH (admin uniquement) -->
+      <a class="btn btn-dark me-2"
+         href="https://{{ host.ip }}:4200"
+         target="_blank"
+         title="Ouvrir un terminal SSH">
+        <i class="bi bi-terminal"></i> Shell
+      </a>
+
+      <a class="btn btn-outline-secondary me-2"
+         href="{{ url_for('host_edit', host_id=host.id) }}">
+        Modifier
+      </a>
     {% endif %}
     <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
   </div>
