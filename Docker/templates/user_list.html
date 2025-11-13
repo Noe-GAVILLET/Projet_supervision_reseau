@@ -44,6 +44,14 @@
             <td class="text-end">
               <a href="{{ url_for('user_profile', user_id=user.id) }}" class="btn btn-sm btn-outline-info">Voir</a>
               <a href="{{ url_for('user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Éditer</a>
+
+              {% if session.get('role') == "admin" and user.id != session.get('user_id') %}
+                <form action="{{ url_for('user_delete', user_id=user.id) }}" method="post"
+                      onsubmit="return confirm('Supprimer définitivement cet utilisateur ?');"
+                      class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
+                </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

@@ -967,6 +967,28 @@ def user_list():
     users = User.query.order_by(User.username.asc()).all()
     return render_template("user_list.html", users=users)
 
+@app.route("/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def user_delete(user_id):
+    # Seuls les admins peuvent supprimer un utilisateur
+    if g.role != "admin":
+        flash("Accès refusé : réservé aux administrateurs.", "danger")
+        return redirect(url_for("user_list"))
+
+    # Empêcher un admin de se supprimer lui-même
+    if session.get("user_id") == user_id:
+        flash("Vous ne pouvez pas supprimer votre propre compte.", "warning")
+        return redirect(url_for("user_list"))
+
+    user = User.query.get_or_404(user_id)
+
+    db.session.delete(user)
+    db.session.commit()
+    flash("Utilisateur supprimé avec succès.", "success")
+
+    return redirect(url_for("user_list"))
+
+
 @app.route("/groups/<int:group_id>")
 @login_required
 def group_hosts(group_id):
