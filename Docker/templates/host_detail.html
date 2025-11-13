@@ -12,7 +12,9 @@
 <div class="d-flex align-items-center justify-content-between mb-4">
   <h4 class="mb-0">Détails du host : {{ host.hostname }}</h4>
   <div>
-    <a class="btn btn-outline-secondary me-2" href="{{ url_for('host_edit', host_id=host.id) }}">Modifier</a>
+    {% if session.get('role') == 'admin' %}
+      <a class="btn btn-outline-secondary me-2" href="{{ url_for('host_edit', host_id=host.id) }}">Modifier</a>
+    {% endif %}
     <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
   </div>
 </div>

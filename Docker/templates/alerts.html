@@ -119,15 +119,18 @@
                 {% endif %}
               </td>
               <td class="text-center">
-                <form method="post" action="{{ url_for('delete_alert', alert_id=alert.id) }}"
-                      onsubmit="return confirm('Supprimer cette alerte ?');"
-                      style="display:inline;">
-                  <button type="submit" class="btn btn-link text-danger p-0" title="Supprimer">
-                    <i class="bi bi-trash-fill fs-5"></i>
-                  </button>
-                </form>
+                {% if session.get('role') == 'admin' %}
+                  <form method="post" action="{{ url_for('delete_alert', alert_id=alert.id) }}"
+                        onsubmit="return confirm('Supprimer cette alerte ?');"
+                        style="display:inline;">
+                    <button type="submit" class="btn btn-link text-danger p-0" title="Supprimer">
+                      <i class="bi bi-trash-fill fs-5"></i>
+                    </button>
+                  </form>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
               </td>
-            </tr>
           {% endfor %}
         </tbody>
       </table>

@@ -23,6 +23,7 @@
           </h5>
 
           <div class="row g-3">
+
             <div class="col-md-6">
               <label class="form-label fw-semibold">Nom d'utilisateur</label>
               <input name="username" class="form-control" value="{{ user.username }}" required>
@@ -33,6 +34,8 @@
               <input name="email" type="email" class="form-control" value="{{ user.email or '' }}">
             </div>
 
+            <!-- 🔒 Champ Rôle visible uniquement pour admin -->
+            {% if session.get('role') == 'admin' %}
             <div class="col-md-6">
               <label class="form-label fw-semibold">Rôle</label>
               <select name="role" class="form-select">
@@ -40,20 +43,24 @@
                 <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrateur</option>
               </select>
             </div>
+            {% endif %}
 
             <div class="col-md-3 d-flex align-items-center">
               <div class="form-check mt-3">
-                <input type="checkbox" name="is_active" id="is_active" class="form-check-input" {% if user.is_active %}checked{% endif %}>
+                <input type="checkbox" name="is_active" id="is_active" class="form-check-input"
+                       {% if user.is_active %}checked{% endif %}>
                 <label for="is_active" class="form-check-label">Actif</label>
               </div>
             </div>
 
             <div class="col-md-3 d-flex align-items-center">
               <div class="form-check mt-3">
-                <input type="checkbox" name="receive_alerts" id="receive_alerts" class="form-check-input" {% if user.receive_alerts %}checked{% endif %}>
+                <input type="checkbox" name="receive_alerts" id="receive_alerts" class="form-check-input"
+                       {% if user.receive_alerts %}checked{% endif %}>
                 <label for="receive_alerts" class="form-check-label">Reçoit les alertes</label>
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -94,6 +101,7 @@
           <i class="bi bi-check-lg me-1"></i> Enregistrer
         </button>
       </div>
+
     </div>
 
   </form>

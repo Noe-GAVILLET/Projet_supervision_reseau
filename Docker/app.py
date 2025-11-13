@@ -58,7 +58,7 @@ flask_logger.addHandler(console_handler)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecret")
 
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_HOST = os.getenv("DB_HOST", "192.168.141.115")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")
@@ -171,7 +171,6 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Si l'utilisateur est déjà connecté via session
     if session.get("username"):
         return redirect(url_for("admin"))
 
@@ -182,13 +181,14 @@ def login():
         user = User.query.filter_by(username=u, is_active=True).first()
 
         if user and verify_password(user.password_hash, p):
-            # ✅ Authentification maison
+
             session["username"] = user.username
             session["role"] = user.role
+            session["user_id"] = user.id
             flash(f"Bienvenue, {user.username} !", "success")
 
-            next_page = request.args.get("next")
-            return redirect(next_page or url_for("admin"))
+            # Direction le dashboard global
+            return redirect(url_for("admin"))
 
         flash("Identifiants invalides.", "danger")
 
@@ -201,6 +201,54 @@ def logout():
     session.clear()
     flash("Déconnecté avec succès.", "info")
     return redirect(url_for("login"))
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    # Si un utilisateur est déjà connecté → pas d’inscription publique.
+    if "user" in session:
+        return redirect(url_for("admin"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        pwd = request.form.get("password", "")
+        pwd2 = request.form.get("password2", "")
+
+        # Vérifications simples
+        if not username or not email or not pwd:
+            flash("Tous les champs sont obligatoires.", "danger")
+            return redirect(url_for("register"))
+
+        if pwd != pwd2:
+            flash("Les mots de passe ne correspondent pas.", "danger")
+            return redirect(url_for("register"))
+
+        # Unicité username
+        if User.query.filter_by(username=username).first():
+            flash("Ce nom d'utilisateur existe déjà.", "danger")
+            return redirect(url_for("register"))
+
+        # Unicité email
+        if User.query.filter_by(email=email).first():
+            flash("Cet email est déjà utilisé.", "danger")
+            return redirect(url_for("register"))
+
+        # Création du compte (rôle = operator par défaut)
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(pwd),
+            role="operator",
+            is_active=True
+        )
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        flash("Compte créé avec succès. Vous pouvez vous connecter.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
 
 @app.route("/hosts")
 @login_required
@@ -870,19 +918,28 @@ def user_edit(user_id):
     from models import User
     user = User.query.get_or_404(user_id)
 
-    # Seuls les administrateurs peuvent modifier un utilisateur
-    if g.role != "admin":
-        flash("Accès refusé : réservé aux administrateurs.", "danger")
-        return redirect(url_for("user_profile", user_id=user.id))
+    current_uid = session.get("user_id")
+    current_role = session.get("role")
+
+    # ➜ Autoriser si admin OU si l’utilisateur modifie son propre profil
+    if not (current_role == "admin" or current_uid == user_id):
+        flash("Accès refusé.", "danger")
+        return redirect(url_for("user_profile", user_id=current_uid))
 
     if request.method == "POST":
+
+        # --- Champs toujours modifiables par tous ---
         user.username = request.form.get("username", user.username)
         user.email = request.form.get("email", user.email)
-        user.role = request.form.get("role", user.role)
         user.is_active = "is_active" in request.form
         user.receive_alerts = "receive_alerts" in request.form
         user.updated_at = datetime.utcnow()
 
+        # --- Champs réservés aux admins ---
+        if current_role == "admin":
+            user.role = request.form.get("role", user.role)
+
+        # --- Gestion du mot de passe ---
         new_password = request.form.get("new_password", "").strip()
         confirm_password = request.form.get("confirm_password", "").strip()
 
@@ -890,14 +947,18 @@ def user_edit(user_id):
             if new_password != confirm_password:
                 flash("Les mots de passe ne correspondent pas.", "danger")
                 return render_template("user_edit.html", user=user)
+
             user.password_hash = generate_password_hash(new_password)
-            flash("Mot de passe mis à jour avec succès ✅", "success")
+            flash("Mot de passe mis à jour avec succès.", "success")
 
         db.session.commit()
-        flash("Profil mis à jour avec succès ✅", "success")
-        return redirect(url_for("user_list"))
+        flash("Profil mis à jour avec succès.", "success")
+
+        # Après modif → renvoyer vers son propre profil
+        return redirect(url_for("user_profile", user_id=user.id))
 
     return render_template("user_edit.html", user=user)
+
 
 @app.route("/users")
 @login_required
@@ -1150,6 +1211,11 @@ def inject_alert_info():
         alert_count=active_alerts,
         has_critical_alerts=has_critical_alerts
     )
+
+@app.context_processor
+def inject_user_id():
+    return dict(current_user_id=session.get("user_id"))
+
 
 
 # -----------------------------------------------------------------------------

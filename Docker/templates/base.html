@@ -17,9 +17,13 @@
       }
     </style>
   </head>
+
   <body>
+
+    <!-- ======== NAVBAR (toujours affichée) ======== -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom shadow-sm">
       <div class="container-fluid">
+
         <!-- Titre -->
         <a class="navbar-brand me-4" href="{{ url_for('admin') }}">Supervision</a>
 
@@ -28,16 +32,24 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarMain">
-          {% if current_user %}
-          <!-- Menu gauche -->
+
+          {% if session.get('username') %}
+          <!-- ===========================================================
+               NAVBAR CONNECTÉ
+          ============================================================ -->
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
 
             <!-- Overview -->
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Overview</a>
               <ul class="dropdown-menu">
+
                 <li><a class="dropdown-item" href="{{ url_for('admin') }}">Dashboard</a></li>
+
+                {% if session['role'] == 'admin' %}
                 <li><a class="dropdown-item" href="{{ url_for('host_new') }}">Ajouter un hôte</a></li>
+                {% endif %}
+
               </ul>
             </li>
 
@@ -45,9 +57,14 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Devices</a>
               <ul class="dropdown-menu">
+
                 <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">🔍 Rechercher un device</a></li>
+
+                {% if session['role'] == 'admin' %}
                 <li><a class="dropdown-item" href="{{ url_for('view_poller_log') }}">📡 Poller Logs</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">🧾 SNMP Logs</a></li>
+                {% endif %}
+
               </ul>
             </li>
 
@@ -75,40 +92,60 @@
                 {% endif %}
               </a>
             </li>
-          </ul>  <!-- ✅ fermeture du premier <ul> -->
+
+          </ul>
 
           <!-- Menu droite -->
           <ul class="navbar-nav ms-auto">
-            {% if current_user %}
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
-                  <i class="bi bi-person-circle"></i> {{ current_user }}
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><span class="dropdown-item-text text-muted">Rôle : {{ current_role or 'inconnu' }}</span></li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                <i class="bi bi-person-circle"></i> {{ session['username'] }}
+              </a>
 
-                  {% if current_role == 'admin' %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{{ url_for('user_list') }}">Gérer les profils</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('user_new') }}">Créer un profil</a></li>
-                  {% endif %}
+              <ul class="dropdown-menu dropdown-menu-end">
 
+                <li><span class="dropdown-item-text text-muted">Rôle : {{ session['role'] }}</span></li>
+
+                {% if session['role'] == 'admin' %}
                   <li><hr class="dropdown-divider"></li>
-                  <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">Se déconnecter</a></li>
-                </ul>
-              </li>
-            {% else %}
-              <li class="nav-item">
-                <a class="btn btn-primary" href="{{ url_for('login') }}">Connexion</a>
-              </li>
-            {% endif %}
+                  <li><a class="dropdown-item" href="{{ url_for('user_list') }}">Gérer les profils</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('user_new') }}">Créer un profil</a></li>
+                {% endif %}
+
+                <li><hr class="dropdown-divider"></li>
+
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('user_edit', user_id=session['user_id']) }}">
+                    Modifier mon profil
+                  </a>
+                </li>
+
+                <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">Se déconnecter</a></li>
+              </ul>
+            </li>
           </ul>
-          {% endif %}  <!-- ✅ fermeture du if global -->
+
+          {% else %}
+          <!-- NAVBAR VISITEUR -->
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('login') }}">Connexion</a>
+            </li>
+            <li class="nav-item">
+              <a class="btn btn-outline-primary ms-3" href="{{ url_for('register') }}">
+                Créer un compte
+              </a>
+            </li>
+          </ul>
+          {% endif %}
+
         </div>
       </div>
     </nav>
 
+    <!-- ============== CONTENU PAGE ============== -->
     <main class="container py-4">
+
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, msg in messages %}
@@ -118,9 +155,13 @@
       {% endwith %}
 
       {% block content %}{% endblock %}
+
     </main>
 
+    <!-- JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- ==================== ALERTES AUTO UPDATE ==================== -->
     <script>
     setInterval(() => {
       fetch("/api/alerts/active_count")
@@ -140,9 +181,11 @@
         .catch(() => {});
     }, 15000);
     </script>
+
+    <!-- ====================== TOASTS ALERTES ====================== -->
     <script>
-    let lastAlertId = 0; // ID le plus récent déjà affiché
-    window.activeToasts = []; // stockage des toasts actuellement visibles
+    let lastAlertId = 0;
+    window.activeToasts = [];
 
     function showToast(alert) {
       const colorMap = {
@@ -152,14 +195,10 @@
       };
       const colorClass = colorMap[alert.severity] || "bg-secondary text-white";
 
-      // ID unique basé sur l'hôte + message
       const toastId = `${alert.host}_${alert.message}`;
-      if (window.activeToasts.includes(toastId)) {
-        return; // 🔁 déjà affiché → on ignore
-      }
+      if (window.activeToasts.includes(toastId)) return;
       window.activeToasts.push(toastId);
 
-      // Création du toast
       const toast = document.createElement("div");
       toast.className = `toast align-items-center ${colorClass} border-0 position-fixed top-0 end-0 m-3`;
       toast.style.zIndex = 2000;
@@ -178,7 +217,6 @@
       const bsToast = new bootstrap.Toast(toast, { delay: 8000 });
       bsToast.show();
 
-      // 🧹 Quand on le ferme → on le retire de la liste et du DOM
       toast.addEventListener("hidden.bs.toast", () => {
         window.activeToasts = window.activeToasts.filter(id => id !== toastId);
         toast.remove();
@@ -190,7 +228,6 @@
         .then(r => r.json())
         .then(alerts => {
           alerts.forEach(a => {
-            // Si c’est une nouvelle alerte non encore vue
             if (a.id > lastAlertId) {
               lastAlertId = a.id;
               showToast(a);
@@ -200,6 +237,9 @@
         .catch(err => console.error("Erreur récupération alertes :", err));
     }, 10000);
     </script>
+
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
   </body>
 </html>
