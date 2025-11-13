@@ -186,36 +186,6 @@ CREATE TABLE IF NOT EXISTS `current_metrics` (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================================
--- Historique des runs de poll
--- ============================================================================
-CREATE TABLE IF NOT EXISTS `poll_runs` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `started_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `finished_at` TIMESTAMP NULL DEFAULT NULL,
-  `status` ENUM('ok','partial','error') NOT NULL DEFAULT 'ok',
-  `note` VARCHAR(255) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_poll_runs_started` (`started_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS `poll_results` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `poll_run_id` BIGINT UNSIGNED NOT NULL,
-  `host_id` INT UNSIGNED NOT NULL,
-  `duration_ms` INT UNSIGNED DEFAULT NULL,
-  `state` ENUM('ok','timeout','snmp_error','unreachable') NOT NULL DEFAULT 'ok',
-  `error` VARCHAR(255) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `fk_pollres_run`
-    FOREIGN KEY (`poll_run_id`) REFERENCES `poll_runs` (`id`)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT `fk_pollres_host`
-    FOREIGN KEY (`host_id`) REFERENCES `hosts` (`id`)
-    ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX `idx_hosts_updated_at` ON `hosts` (`updated_at`);
 
 -- ============================================================================
 -- Utilisateur admin par défaut

@@ -24,25 +24,25 @@ services:
       retries: 10
 
   # --- 🌐 Flask + Poller ensemble ---
-  #flask-snmp:
-  #  build: .
-  #  container_name: flask-snmp
-  #  depends_on:
-  #    mysql-snmp:
-  #      condition: service_healthy
-  #  environment:
-  #    FLASK_ENV: production
-  #    SECRET_KEY: ${SECRET_KEY}
-  #    DB_HOST: mysql-snmp
-  #    DB_PORT: ${MYSQL_HOST_PORT}
-  #    DB_NAME: ${MYSQL_DATABASE}
-  #    DB_USER: ${MYSQL_USER}
-  #    DB_PASSWORD: ${MYSQL_PASSWORD}
-  #  ports:
-  #    - "5000:5000"
-  #  volumes:
-  #    - .:/app
-  #  restart: always
+  flask-snmp:
+    build: .
+    container_name: flask-snmp
+    depends_on:
+      mysql-snmp:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: production
+      SECRET_KEY: ${SECRET_KEY}
+      DB_HOST: mysql-snmp
+      DB_PORT: ${MYSQL_HOST_PORT}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    restart: always
 
   # --- 🧰 Adminer (interface web SQL facultative) ---
   adminer:

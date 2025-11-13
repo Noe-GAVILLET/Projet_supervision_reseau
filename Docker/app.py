@@ -58,7 +58,7 @@ flask_logger.addHandler(console_handler)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecret")
 
-DB_HOST = os.getenv("DB_HOST", "192.168.141.115")
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "SNMP")
 DB_USER = os.getenv("DB_USER", "sqluser")
