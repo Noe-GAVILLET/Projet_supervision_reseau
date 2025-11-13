@@ -100,4 +100,5 @@ gantt
     Finalisation / Livrables : 8, 2025-11-27, 1d
     Rédaction manuel d’utilisation : 35, 2025-11-27, 1d
     Préparation soutenance : 36, 2025-11-27, 0d
+    Examen : 9, 2025-12-04, 1d
 ```
