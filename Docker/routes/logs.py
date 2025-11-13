@@ -4,11 +4,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 import pandas as pd
 
-from flask import Blueprint, render_template, request, send_file
-from models import db, Host, Group, Measurement
-from datetime import datetime, timedelta
-from io import BytesIO
-import pandas as pd
+
 
 bp = Blueprint("logs", __name__)
 
