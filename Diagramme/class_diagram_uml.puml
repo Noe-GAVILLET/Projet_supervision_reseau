@@ -1,0 +1,215 @@
+@startuml "Supervision Réseau - Diagramme UML"
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam classBackgroundColor #E3F2FD
+skinparam classBorderColor #1565C0
+skinparam arrowColor #1565C0
+skinparam fontSize 11
+skinparam maxMessageSize 250
+
+' ============================================================================
+' COUCHE 1: AUTHENTIFICATION & GESTION UTILISATEURS
+' ============================================================================
+
+class Utilisateur {
+  - id
+  - username
+  - email
+  - motDePasse
+  - role: admin | operateur
+  - actif
+  - dateCreation
+}
+
+' ============================================================================
+' COUCHE 2: CONFIGURATION DES EQUIPEMENTS
+' ============================================================================
+
+class Equipement {
+  - id
+  - hostname
+  - ip
+  - port SNMP
+  - communauteSNMP
+  - description
+  - statut: up | down | warning
+}
+
+class Template {
+  - id
+  - nom
+  - versionSNMP: v1 | v2c | v3
+  - categoriesMetriques
+}
+
+class Groupe {
+  - id
+  - nom
+  - description
+}
+
+class Tag {
+  - id
+  - nom
+}
+
+' ============================================================================
+' COUCHE 3: THRESHOLDS & LIMITES
+' ============================================================================
+
+class Seuil {
+  - id
+  - equipement_id
+  - typeMetrique: CPU | RAM | Storage
+  - valeurWarning
+  - valeurCritical
+}
+
+' ============================================================================
+' COUCHE 4: MOTEUR DE POLLING & SURVEILLANCE
+' ============================================================================
+
+class Poller {
+  - frequence: minutes
+  - derniereExecution
+  - statut: actif | erreur
+  --
+  + demarrer()
+  + interrogerEquipement()
+  + collecterMetriques()
+  + verifierSeuils()
+  + genererAlertes()
+}
+
+' ============================================================================
+' COUCHE 5: MÉTRIQUES COLLECTÉES
+' ============================================================================
+
+class Metrique {
+  - id
+  - equipement_id
+  - nom: CPU | RAM | Storage | Interface
+  - valeur
+  - dateCollecte
+  - unite
+}
+
+' ============================================================================
+' COUCHE 6: SYSTÈME D'ALERTES
+' ============================================================================
+
+class Alerte {
+  - id
+  - equipement_id
+  - severite: info | warning | critical
+  - message
+  - dateCreation
+  - dateResolution
+  - acquittePar
+}
+
+' ============================================================================
+' IMPORT/EXPORT
+' ============================================================================
+
+class FichierCSV {
+  --
+  + importer()
+  + exporter()
+}
+
+' ============================================================================
+' FLUX PRINCIPAL: UTILISATEUR -> CONFIGURATION
+' ============================================================================
+
+Utilisateur "1" --> "0..*" Equipement : crée/modifie
+
+' ============================================================================
+' FLUX PRINCIPAL: CONFIGURATION DES EQUIPEMENTS
+' ============================================================================
+
+Equipement "0..*" --> "1" Template : utilise
+Equipement "*" --> "*" Tag : possède
+Equipement "0..*" --> "1" Groupe : appartient
+Equipement "1" --> "0..*" Seuil : a
+
+' ============================================================================
+' FLUX PRINCIPAL: IMPORT/EXPORT
+' ============================================================================
+
+FichierCSV --> Equipement : importe/exporte
+
+' ============================================================================
+' FLUX PRINCIPAL: POLLER -> COLLECTE DE DONNÉES
+' ============================================================================
+
+Poller --> Template : consulte\n(quoi collecter ?)
+Poller --> Equipement : interroge
+Poller --> Metrique : crée
+
+' ============================================================================
+' FLUX PRINCIPAL: ANALYSE DES SEUILS
+' ============================================================================
+
+Metrique --> Seuil : comparaison
+Seuil --> Alerte : déclenche
+
+' ============================================================================
+' FLUX PRINCIPAL: GESTION DES ALERTES
+' ============================================================================
+
+Alerte --> Utilisateur : notifie/acquitte
+
+' ============================================================================
+' NOTES EXPLICATIVES
+' ============================================================================
+
+note right of Utilisateur
+  **AUTHENTIFICATION**
+  Se connecte avec identifiants
+  Admin ou Opérateur
+end note
+
+note right of Equipement
+  **CONFIGURATION**
+  Admin ajoute les hosts
+  IP + SNMP + Template + Tags
+end note
+
+note right of Template
+  **MODÈLE**
+  Défini les métriques
+  à surveiller (CPU, RAM...)
+  Appliqué à l'équipement
+end note
+
+note right of Seuil
+  **LIMITES D'ALERTE**
+  Warning (léger)
+  Critical (grave)
+  Définis par équipement
+end note
+
+note right of Poller
+  **CŒUR DU SYSTÈME**
+  Tourne en continu
+  Interroge via SNMP
+  Collecte & analyse
+end note
+
+note right of Metrique
+  **DONNÉES**
+  CPU, RAM, Storage
+  Interfaces status
+  Horodatées & archivées
+end note
+
+note right of Alerte
+  **NOTIFICATIONS**
+  Créées si critical
+  Envoyées par email
+  Affichées sur le site
+  Peuvent être acquittées
+end note
+
+@enduml
