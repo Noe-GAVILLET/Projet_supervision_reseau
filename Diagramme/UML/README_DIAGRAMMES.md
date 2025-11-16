@@ -2,7 +2,7 @@
 
 ## 📋 Table des Matières
 
-1. [Vue Client Simplifié (Recommandé pour présentation)](#1-vue-client-simplifié)
+1. [Vue Client Simplifié](#1-vue-client-simplifié)
 2. [Séquence Complète (Détail technique)](#2-séquence-complète)
 3. [Architecture Système (Infrastructure)](#3-architecture-système)
 4. [Cycle de Polling SNMP (Détail algorithme)](#4-cycle-de-polling-snmp)
@@ -13,10 +13,7 @@
 ## 1️⃣ Vue Client Simplifié
 **Fichier:** `sequence_diagram_client_overview.puml`
 
-### 📌 Objectif
-Présentation au client des flux métier principaux sans détails techniques.
-
-### 🎯 Contenu
+### Description
 - **Phase 1**: Authentification et accès au dashboard
 - **Phase 2**: Polling automatique continu (15 sec)
 - **Phase 3**: Consultation des statuts équipements
@@ -27,29 +24,12 @@ Présentation au client des flux métier principaux sans détails techniques.
 - **Phase 8**: Gestion multi-utilisateurs
 - **Phase 9**: Réception notifications email
 
-### 💡 Utilisation
-**✅ Idéal pour:**
-- Soutenance client
-- Présentation direction
-- Documentation commerciale
-- Démonstration fonctionnalités métier
-
-### 🔑 Points clés mis en avant
-- Supervision **automatique** et **temps réel**
-- Interface web **intuitive**
-- Gestion **multi-utilisateurs**
-- Alertes par **email** instantanées
-- **Scalabilité** système
-
 ---
 
 ## 2️⃣ Séquence Complète
 **Fichier:** `sequence_diagram_supervision.puml`
 
-### 📌 Objectif
-Vue technique complète avec tous les appels système, composants et interactions.
-
-### 🎯 Contenu
+### Desription
 
 #### **Section 1: Authentification**
 - Vérification identifiants en base de données
@@ -96,19 +76,6 @@ Vue technique complète avec tous les appels système, composants et interaction
 - Création comptes (admin/operator)
 - Configuration abonnement alertes
 
-### 💡 Utilisation
-**✅ Idéal pour:**
-- Réunion technique avec équipe dev
-- Validation architecture
-- Documentation technique détaillée
-- Onboarding nouvelles ressources
-
-### 🔑 Caractéristiques
-- ✅ Détail **ligne par ligne**
-- ✅ Tous les **services** représentés
-- ✅ Gestion **d'erreurs** illustrée
-- ✅ **Transactions** DB montrées
-- ✅ Notifications **email** intégrées
 
 ---
 
@@ -207,7 +174,6 @@ MySQL Database (Port 3306)
 ```
 SNMP v2c (Port 161 UDP)
 ├── Serveurs (Windows/Linux SNMP Agent)
-├── Routeurs (Cisco/Juniper)
 ├── Switches (VLANs/Spanning Tree)
 ├── Postes clients
 ├── Firewalls (PFSense)
@@ -245,13 +211,6 @@ logs/supervision.log (5MB rotating)
 └── Charset: UTF-8 MB4
 ```
 
-### 💡 Utilisation
-**✅ Idéal pour:**
-- Architecture review
-- Documentation infrastructure
-- Planning déploiement
-- Audit technique
-- Justification choix technologiques
 
 ### 🔑 Technologies
 - **Backend:** Python 3.11, Flask, SQLAlchemy
@@ -266,7 +225,6 @@ logs/supervision.log (5MB rotating)
 ## 4️⃣ Cycle de Polling SNMP
 **Fichier:** `polling_cycle_detailed.puml`
 
-### 📌 Objectif
 Détail complet du cycle de polling qui s'exécute **toutes les 15 secondes**.
 
 ### 🎯 Contenu
@@ -287,7 +245,7 @@ FOR EACH host IN Host.query.all():
 ```
 - Teste accessibilité réseau de base
 - Timeout: 2 secondes
-- Compatible Windows et Linux
+
 
 ##### **Étape 2: Collecte SNMP (si ping OK)**
 ```python
