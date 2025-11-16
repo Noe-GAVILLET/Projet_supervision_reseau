@@ -1,0 +1,243 @@
+@startuml Supervision Reseau - Diagramme de Sequence
+
+title Systeme de Supervision Reseau via SNMP\nFlux Principal d'Application
+
+actor User as "Utilisateur"
+participant Web as "Interface Web\n(Flask/Jinja2)"
+participant Auth as "Module Auth\n(Flask Session)"
+participant Scheduler as "Scheduler\n(Thread)"
+participant Poller as "SNMP Poller\n(poller.py)"
+participant SNMP as "SNMP Utils\n(snmp_utils.py)"
+participant Network as "Equipement\nReseau\n(SNMP Agent)"
+participant Database as "Base de Donnees\n(MySQL)"
+participant Alerts as "Alertes\n(seuils.py)"
+participant Email as "Notification\n(SMTP Gmail)"
+
+== Phase 1: Authentification ==
+User -> Web: Visite /login
+activate Web
+Web -> Auth: GET /login
+Auth -> Web: Affiche formulaire login.html
+deactivate Web
+
+User -> Web: POST login (username, password)
+activate Web
+Web -> Auth: verify_password(hash, plaintext)
+activate Auth
+Auth -> Database: Query User WHERE username=?
+activate Database
+Database --> Auth: user_record
+deactivate Database
+Auth --> Web: OK - Authentification reussie
+deactivate Auth
+
+Web -> Web: session['username'] = username\nsession['role'] = user.role
+Web --> User: 302 Redirect vers /admin
+deactivate Web
+
+== Phase 2: Dashboard ==
+User -> Web: GET /admin
+activate Web
+Web -> Auth: Verifier session
+activate Auth
+Auth -> Database: Query User WHERE username=?
+activate Database
+Database --> Auth: user_record
+deactivate Database
+Auth -> Web: OK - Autorise
+deactivate Auth
+
+Web -> Database: Query all Hosts + Alerts + CurrentMetrics
+activate Database
+Database --> Web: hosts, alerts, metrics
+deactivate Database
+
+Web --> User: Affiche Dashboard (statut UP/DOWN, graphiques)
+deactivate Web
+
+== Phase 3: Lancement Scheduler SNMP ==
+Web -> Scheduler: start_scheduler(app, db, Host, Alert)
+activate Scheduler
+Scheduler -> Poller: Demarrer thread daemon (15 sec interval)
+activate Poller
+note right of Poller
+  Boucle infinie:
+  while True:
+    poll_host_metrics()
+    sleep(15 sec)
+end note
+
+== Phase 4: Cycle de Polling (toutes les 15 sec) ==
+loop Polling Iteration
+  Poller -> Database: Query Host.all()
+  activate Database
+  Database --> Poller: list[Host]
+  deactivate Database
+
+  loop Pour chaque host
+    
+    == 4.1: Verification Ping ==
+    Poller -> Poller: check_host_reachability(host)
+    activate Poller
+    Poller --> Poller: ping_ok = True/False
+    deactivate Poller
+
+    alt ping_ok == True
+      
+      == 4.2: Collecte SNMP ==
+      Poller -> SNMP: get_metrics(host.ip, community, port, category)
+      activate SNMP
+      SNMP -> Network: snmp_walk(OID_cpu, OID_ram, OID_storage...)
+      activate Network
+      Network --> SNMP: SNMP Response (valeurs)
+      deactivate Network
+      SNMP -> SNMP: Parsing + Formatage donnees
+      SNMP --> Poller: dict {OID: value}
+      deactivate SNMP
+
+    else ping_ok == False
+      
+      Poller -> Alerts: open_alert(host_id, critical, SNMP injoignable)
+      activate Alerts
+      Alerts -> Database: INSERT INTO alerts
+      activate Database
+      Database --> Alerts: OK
+      deactivate Database
+      Alerts -> Email: send_alert_email()
+      activate Email
+      Email --> Email: Notification SMTP envoyee
+      deactivate Email
+      deactivate Alerts
+    end
+
+    == 4.3: Stockage Metriques ==
+    alt snmp_ok == True
+      Poller -> Database: upsert_current_metric(host_id, oid, value)
+      activate Database
+      Database --> Poller: OK
+      deactivate Database
+      
+      Poller -> Database: INSERT INTO measurements(host_id, oid, value, ts)
+      activate Database
+      Database --> Poller: OK
+      deactivate Database
+
+      == 4.4: Verification Seuils ==
+      Poller -> Alerts: check_thresholds(host, category, oid, value)
+      activate Alerts
+      
+      alt value >= critical_threshold
+        Alerts -> Database: INSERT INTO alerts (severity=critical)
+        activate Database
+        Database --> Alerts: OK
+        deactivate Database
+        Alerts -> Email: send_alert_email() - CRITIQUE
+        activate Email
+        Email --> Email: Notification SMTP
+        deactivate Email
+      else value >= warning_threshold
+        Alerts -> Database: INSERT INTO alerts (severity=warning)
+        activate Database
+        Database --> Alerts: OK
+        deactivate Database
+      else Valeur normale
+        Alerts -> Database: UPDATE alerts SET resolved_at=NOW()
+        activate Database
+        Database --> Alerts: OK
+        deactivate Database
+      end
+      deactivate Alerts
+    end
+
+    == 4.5: Detection Changement Etat ==
+    Poller -> Poller: new_status = UP/DOWN
+    Poller -> Poller: previous_status = HOST_STATUS_CACHE[host_id]
+
+    alt Changement d'etat detecte
+      Poller -> Database: UPDATE hosts SET status, last_status_change
+      activate Database
+      Database --> Poller: OK
+      deactivate Database
+      
+      alt new_status == DOWN
+        Poller -> Alerts: open_alert() - SNMP injoignable
+        activate Alerts
+        Alerts -> Email: send_alert_email()
+        activate Email
+        Email --> Email: Alerte critique envoyee
+        deactivate Email
+        deactivate Alerts
+      else new_status == UP
+        Poller -> Alerts: resolve_alert()
+        activate Alerts
+        Alerts -> Email: send_alert_email() - Reprise
+        activate Email
+        Email --> Email: Notification reprise
+        deactivate Email
+        deactivate Alerts
+      end
+    end
+
+    Poller -> Database: db.session.commit()
+    activate Database
+    Database --> Poller: OK - Transaction validee
+    deactivate Database
+  end
+
+  Scheduler -> Scheduler: sleep(15 secondes)
+  note right of Scheduler
+    Attendre avant
+    prochaine iteration
+  end note
+end
+
+== Phase 5: Affichage Temps Reel ==
+User -> Web: GET /admin (apres polling)
+activate Web
+Web -> Database: Query hosts, alerts, current_metrics
+activate Database
+Database --> Web: Donnees mises a jour
+deactivate Database
+Web --> User: Dashboard rafraichi
+deactivate Web
+
+== Phase 6: Gestion des Alertes ==
+User -> Web: GET /alerts
+activate Web
+Web -> Database: Query Alert WHERE resolved_at IS NULL
+activate Database
+Database --> Web: list[Alert]
+deactivate Database
+Web --> User: Affiche alertes actives
+deactivate Web
+
+User -> Web: POST /alert/X/acknowledge
+activate Web
+Web -> Database: UPDATE Alert SET acknowledged_by, acknowledged_at
+activate Database
+Database --> Web: OK
+deactivate Database
+Web --> User: Alerte acquittee
+deactivate Web
+
+== Phase 7: Configuration Utilisateurs ==
+User -> Web: GET /users (Admin)
+activate Web
+Web -> Database: Query users WHERE is_active=1
+activate Database
+Database --> Web: users list
+deactivate Database
+Web --> User: Affiche liste utilisateurs
+deactivate Web
+
+User -> Web: POST /user/new (Admin)
+activate Web
+Web -> Web: generate_password_hash()
+Web -> Database: INSERT INTO users (username, email, password_hash, role)
+activate Database
+Database --> Web: OK
+deactivate Database
+Web --> User: Nouvel utilisateur cree
+deactivate Web
+
+@enduml

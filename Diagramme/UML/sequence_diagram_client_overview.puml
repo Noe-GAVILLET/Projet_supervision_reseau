@@ -1,0 +1,197 @@
+@startuml Supervision Réseau - Vue Client (Simplifié)
+
+title Système de Supervision Réseau via SNMP\nFlux Client Simplifié
+
+skinparam backgroundColor #F5F5F5
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 10
+
+actor "👤 Client\nAdministrateur" as Client
+participant "🌐 Dashboard\nWeb" as Dashboard
+participant "⏰ Moteur\nde Polling" as Engine
+participant "🌍 Équipements\nRéseau" as Equipment
+participant "💾 Base de\nDonnées" as DB
+participant "📧 Système\nde Notification" as Notify
+
+== Phase 1: Accès à l'Application ==
+Client -> Dashboard: 1️⃣ Se connecter
+activate Dashboard
+Dashboard -> Dashboard: Vérifier identifiants
+Dashboard --> Client: ✅ Accès autorisé\n(Dashboard chargé)
+deactivate Dashboard
+
+== Phase 2: Surveillance Temps Réel (Boucle Automatique) ==
+
+par Polling Automatique Continu
+  Engine -> Engine: 📡 Démarrage moteur (15 sec intervalle)
+  
+  loop Toutes les 15 secondes
+    Engine -> Equipment: 🔍 Scanner tous les équipements
+    activate Equipment
+    Equipment --> Engine: 📊 Mesures SNMP reçues\n(CPU, RAM, Storage, Interfaces, ...)
+    deactivate Equipment
+    
+    Engine -> DB: 💾 Stocker mesures
+    activate DB
+    DB --> Engine: ✅ Sauvegardé
+    deactivate DB
+    
+    Engine -> Engine: ✔️ Vérifier seuils\n(warning, critical)
+    
+    alt Seuil Dépassé (Alerte)
+      Engine -> Notify: 🚨 Déclencher alerte
+      activate Notify
+      Notify -> Notify: 📧 Préparer email
+      Notify --> Engine: ✅ Notification envoyée
+      deactivate Notify
+    end
+    
+    Engine -> Engine: 🔄 Prochaine itération...
+  end
+end par
+
+== Phase 3: Consultation du Dashboard ==
+Client -> Dashboard: 2️⃣ Consulter statut équipements
+activate Dashboard
+Dashboard -> DB: Récupérer statuts + métriques fresh
+activate DB
+DB --> Dashboard: 🟢 UP / 🔴 DOWN / ⚠️ Dégradé
+deactivate DB
+
+Dashboard -> Dashboard: 📊 Afficher:\n✓ Statut des 20+ équipements\n✓ Historiques graphiques\n✓ CPU, RAM, Stockage en %\n✓ Interfaces réseau (état)
+Dashboard --> Client: 📈 Dashboard temps réel
+deactivate Dashboard
+
+== Phase 4: Affichage des Alertes ==
+Client -> Dashboard: 3️⃣ Consulter les alertes
+activate Dashboard
+Dashboard -> DB: Lire toutes les alertes actives
+activate DB
+DB --> Dashboard: Liste des ⚠️ warnings\nListe des 🚨 critiques
+deactivate DB
+
+Dashboard -> Dashboard: Afficher:\n✓ Alertes non acquittées\n✓ Sévérité (info/warning/critical)\n✓ Date/heure\n✓ Équipement affecté\n✓ Description du problème
+Dashboard --> Client: 🚨 Tableau de bord alertes
+deactivate Dashboard
+
+== Phase 5: Gestion d'une Alerte ==
+Client -> Dashboard: 4️⃣ Acquitter une alerte
+activate Dashboard
+Dashboard -> DB: Marquer alerte comme "acknowledged"
+activate DB
+DB --> Dashboard: ✅ Alerte acquittée
+deactivate DB
+Dashboard --> Client: ✅ Confirmation
+deactivate Dashboard
+
+note right of Client
+  L'alerte reste en base,
+  mais est marquée comme vue
+end note
+
+== Phase 6: Configuration & Maintenance ==
+Client -> Dashboard: 5️⃣ Ajouter nouvel équipement
+activate Dashboard
+Dashboard -> Dashboard: Afficher formulaire ajout
+Dashboard --> Client: Formulaire (IP, SNMP Community, Seuils, ...)
+deactivate Dashboard
+
+Client -> Dashboard: Remplir données + valider
+activate Dashboard
+Dashboard -> DB: INSERT équipement
+activate DB
+DB --> Dashboard: ✅ Nouvel host créé
+deactivate DB
+
+Engine -> Equipment: Prochaine itération:\n🔍 Scan automatique du nouvel équipement
+activate Equipment
+Equipment --> Engine: 📊 Métriques disponibles
+deactivate Equipment
+
+Dashboard --> Client: ✅ Équipement surveillé
+deactivate Dashboard
+
+== Phase 7: Gestion des Seuils ==
+Client -> Dashboard: 6️⃣ Configurer seuils personnalisés
+activate Dashboard
+Dashboard -> Dashboard: Afficher écran config
+Dashboard --> Client: Thresholds: CPU 80%↗ warning, 90%↗ critical
+deactivate Dashboard
+
+Client -> Dashboard: Modifier: CPU warning→70%, critical→85%
+activate Dashboard
+Dashboard -> DB: UPDATE seuils pour cet hôte
+activate DB
+DB --> Dashboard: ✅ Seuils mis à jour
+deactivate DB
+
+Engine -> Engine: Prochaines alertes avec NEW seuils
+Dashboard --> Client: ✅ Configuration appliquée
+deactivate Dashboard
+
+== Phase 8: Gestion des Utilisateurs (Admin) ==
+Client -> Dashboard: 7️⃣ Ajouter nouvel opérateur
+activate Dashboard
+Dashboard -> Dashboard: @admin_required
+Dashboard -> Dashboard: Afficher page users
+Dashboard --> Client: Formulaire: username, email, rôle (admin/operator)
+deactivate Dashboard
+
+Client -> Dashboard: Créer compte + cocher "recevoir alertes"
+activate Dashboard
+Dashboard -> DB: INSERT utilisateur (receive_alerts=1)
+activate DB
+DB --> Dashboard: ✅ Nouvel user créé
+deactivate DB
+
+note right of DB
+  Le nouvel opérateur recevra
+  les emails d'alertes critiques
+end note
+
+Dashboard --> Client: ✅ Utilisateur créé
+deactivate Dashboard
+
+== Phase 9: Réception des Notifications ==
+Notify -> Notify: 📧 Une alerte critique se déclenche\n(ex: RAM > 95%)
+activate Notify
+
+Notify -> Notify: Récupérer emails users\n(receive_alerts=True)
+
+Notify -> Notify: Envoyer via Gmail SMTP:\nSubject: "⚠️ CRITIQUE - Host XYZ RAM élevée"\nBody: Description + valeur détaillée
+Notify -> Client: 📧 Email reçu
+Client -> Client: Consulter alerte dans inbox
+
+note right of Notify
+  Notification instantanée
+  via Gmail (TLS 587)
+  - Opérateurs avertis immédiatement
+  - Historique en base de données
+end note
+
+deactivate Notify
+
+== Résumé des Avantages ==
+note over Client, Notify
+  ✅ **Supervision Automatique & Temps Réel**
+  • Scan SNMP toutes les 15 secondes
+  • Détection automatique des problèmes
+  • Alertes immédiates par email
+  
+  ✅ **Interface Web Intuitive**
+  • Statut des équipements en 1 coup d'œil
+  • Historiques graphiques (trends)
+  • Configuration simple par formulaires web
+  
+  ✅ **Gestion des Alertes**
+  • Seuils personnalisables par équipement
+  • Acquittement des alertes
+  • Historique complet des événements
+  
+  ✅ **Scalabilité**
+  • Support multi-utilisateurs (admin, operators)
+  • Base de données MySQL pour scalabilité
+  • Logs centralisés pour audit
+end note
+
+@enduml

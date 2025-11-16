@@ -1,0 +1,118 @@
+@startuml Architecture Systeme Supervision Reseau
+
+skinparam backgroundColor #FFFACD
+skinparam package {
+  BackgroundColor #E1F5FE
+  BorderColor #0277BD
+  BorderThickness 2
+}
+
+title Systeme de Supervision Reseau via SNMP - Architecture Complete
+
+rectangle "SERVEUR SUPERVISION" #E3F2FD {
+  
+  package "Couche Presentation Frontend" #E8F5E9 {
+    component "Flask Web Server Port 5000" as WebApp
+    component "Templates Jinja2" as Templates
+    component "Assets CSS Bootstrap Chart.js" as Static
+  }
+  
+  package "Couche Applicative Metier" #FFF9C4 {
+    component "app.py Routes et controle" as AppCore
+    component "Authentication Flask Session" as Auth
+    component "Module SNMP snmp_utils.py" as SNMPModule
+    component "Scheduler poller.py 15 sec" as Scheduler
+    component "Detecteur Alertes seuils.py" as AlertDetector
+    component "Notification db_utils.py emails" as Notifier
+    component "Gestion BDD db_utils.py" as DBUtils
+    component "Modeles ORM models.py" as Models
+  }
+  
+  package "Couche Donnees Backend" #F3E5F5 {
+    database "MySQL Database Port 3306" as MySQL {
+      rectangle "Tables Principales" #E0E0E0 {
+        storage "users table" as UsersTable
+        storage "hosts table" as HostsTable
+        storage "current_metrics table" as CurrentMetricsTable
+        storage "measurements table" as MeasurementsTable
+        storage "alerts table" as AlertsTable
+        storage "groups templates tags" as MetadataTable
+      }
+    }
+  }
+}
+
+rectangle "INFRASTRUCTURE RESEAU" #FFEBEE {
+  
+  package "Protocole SNMP v2c" #FFF0F0 {
+    component "SNMP Engine pysnmp Port 161" as SNMPEngine
+  }
+  
+  package "Equipements Supervises" #F1F8E9 {
+    component "Serveur Windows SNMP" as Server    
+    component "Poste Linux SNMP" as Linux  
+    component "Switch VLAN SNMP" as Switch
+    component "Poste Client Windows SNMP" as Client
+    component "Firewall PFSense SNMP" as Firewall
+    component "Autres Equipements SNMP" as OtherDevices
+  }
+}
+
+rectangle "SYSTEME DE NOTIFICATION" #FCE4EC {
+  component "Gmail SMTP TLS 587" as SMTP
+  component "Boite Email Clients" as EmailBox
+}
+
+rectangle "LOGS ET MONITORING" #F0F4C3 {
+  component "Fichier Logs supervision.log" as LogFile
+  component "Console Journaux temps reel" as Console
+}
+
+WebApp --> Auth: Authentification
+Auth --> Models: Query User
+Models --> MySQL: SELECT users
+
+Templates --> WebApp: Render HTML
+Static --> WebApp: CSS JS Assets
+
+AppCore --> SNMPModule: Collecte donnees
+SNMPModule --> SNMPEngine: SNMP Requests
+SNMPEngine --> Server: SNMP GET WALK
+SNMPEngine --> Linux: SNMP GET WALK
+SNMPEngine --> Switch: SNMP GET WALK
+SNMPEngine --> Client: SNMP GET WALK
+SNMPEngine --> Firewall: SNMP GET WALK
+SNMPEngine --> OtherDevices: SNMP GET WALK
+
+Scheduler --> AppCore: Polling 15 sec
+AppCore --> DBUtils: Stockage mesures
+DBUtils --> Models: ORM mapping
+Models --> MySQL: INSERT UPDATE measurements
+
+Scheduler --> AlertDetector: Verification seuils
+AlertDetector --> DBUtils: Creation alertes
+DBUtils --> Models: Alert ORM
+Models --> MySQL: INSERT alerts
+
+AlertDetector --> Notifier: Alerte declenchee
+Notifier --> SMTP: Envoi email
+SMTP --> EmailBox: Notification
+
+Models --> MySQL: Historisation
+MySQL --> LogFile: Journalisation
+MySQL --> Console: Events
+
+AppCore --> WebApp: Dashboard donnees
+WebApp --> Templates: Render
+Templates --> WebApp: Page HTML
+
+package "Container Docker" #E0E0E0 {
+  component "python:3.11 Flask APScheduler" as PythonContainer
+  component "MySQL:8.0 Port 3306" as MySQLContainer
+  component "Network bridge" as Network
+}
+
+PythonContainer -.-> Network
+MySQLContainer -.-> Network
+
+@enduml
