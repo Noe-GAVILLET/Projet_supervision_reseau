@@ -654,17 +654,9 @@ resolved_at     → Quand fermé (NULL=actif)
 | Retour normal | INFO | Si was critical | - | CPU 65% (resolved) |
 | État interface changé | WARNING | Non | - | Interface down |
 
-### 💡 Utilisation
-**✅ Idéal pour:**
-- Training utilisateurs
-- Documentation workflow alertes
-- Compréhension escalade criticité
-- Audit trail complet
-- Debugging problèmes notification
-
 ---
 
-## 🎯 Résumé pour Présentation Client
+## 🎯 Présentation Client
 
 ### 🟢 Points Forts à Mettre en Avant
 1. ✅ **Supervision 24/7** - Polling automatique toutes les 15 sec
@@ -676,7 +668,7 @@ resolved_at     → Quand fermé (NULL=actif)
 7. ✅ **Personnalisation** - Seuils configurables par équipement
 8. ✅ **Logs centralisés** - Tous les événements archivés
 
-### 📊 Recommandations de Présentation
+### 📊 Présentation
 
 1. **Kick-off (5 min)** → Diagramme "Vue Client"
    - Montrer flux métier principal
@@ -698,41 +690,3 @@ resolved_at     → Quand fermé (NULL=actif)
    - Clarifier limitations
    - Évaluer satisfaction
 
-### 📌 Fichiers à Livrer au Client
-
-```
-📁 Présentation Client/
-├── 📄 README.md (ce fichier)
-├── 🎨 sequence_diagram_client_overview.puml ← À GÉNÉRER EN PNG/PDF
-├── 🏗️ architecture_system.puml ← À GÉNÉRER EN PNG/PDF
-└── 📊 [Autres diagrammes pour équipe dev]
-```
-
-### 🔧 Conversion PlantUML → PNG/PDF
-```bash
-# Installation Graphviz + PlantUML
-choco install graphviz plantuml  # Windows
-brew install graphviz plantuml   # macOS
-apt install graphviz plantuml    # Linux
-
-# Générer PNG (ideal pour web/email)
-plantuml -Tpng sequence_diagram_client_overview.puml
-plantuml -Tpng architecture_system.puml
-
-# Générer PDF (idéal pour impression/rapport)
-plantuml -Tpdf sequence_diagram_client_overview.puml
-plantuml -Tpdf architecture_system.puml
-
-# Résultats dans même répertoire
-# ✅ sequence_diagram_client_overview.png
-# ✅ architecture_system.png
-# ✅ sequence_diagram_client_overview.pdf
-# ✅ architecture_system.pdf
-```
-
----
-
-**Créé:** 2025-11-16  
-**Projet:** Supervision Réseau via SNMP  
-**Version:** 1.0  
-**Auteur:** Équipe Développement
