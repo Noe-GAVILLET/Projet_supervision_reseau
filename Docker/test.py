@@ -1,6 +1,7 @@
 import subprocess
 import ipaddress
 from tqdm import tqdm
+import sys
 
 def snmp_get(ip, community="public"):
     try:
@@ -23,9 +24,11 @@ def scan_network(network, community="public"):
             result = snmp_get(ip, community)
             if result:
                 found.append((str(ip), result))
+
     except KeyboardInterrupt:
-        print("\n\nScan interrompu par l'utilisateur.")
-    
+        print("\n\nScan interrompu par l'utilisateur.\n")
+        sys.exit(0)
+
     print("\n=== Résultats SNMP trouvés ===")
     if not found:
         print("Aucun hôte SNMP trouvé.")
@@ -35,4 +38,16 @@ def scan_network(network, community="public"):
 
 
 if __name__ == "__main__":
-    scan_network("192.168.1.0/24", "public")
+    try:
+        network = input("Entrez la plage d'adresses à scanner (ex: 192.168.1.0/24) : ").strip()
+        community = input("Entrez la communauté SNMP (défaut: public) : ").strip()
+
+        if community == "":
+            community = "public"
+
+        print()
+        scan_network(network, community)
+
+    except KeyboardInterrupt:
+        print("\nInterruption par l'utilisateur. Fermeture.\n")
+        sys.exit(0)
