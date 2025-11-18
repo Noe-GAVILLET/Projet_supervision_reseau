@@ -9,9 +9,9 @@ from database import db
 import logging
 logger = logging.getLogger(__name__)
 # ⚠️ Idéalement, lis ces valeurs depuis des variables d'environnement
-ADMIN_EMAIL = "noe.gavillet@gmail.com"      # Fallback si aucun abonné
-SENDER_EMAIL = "noe.gavillet@gmail.com"     # Compte SMTP utilisé pour l'envoi
-APP_PASSWORD = "outjcrsikfnyasim"           # Mot de passe d’application
+ADMIN_EMAIL = "supervision.alerte.detail@gmail.com"      # Fallback si aucun abonné
+SENDER_EMAIL = "supervision.alerte.detail@gmail.com"     # Compte SMTP utilisé pour l'envoi
+APP_PASSWORD = "zvkfeqzvkzgfkzes"           # Mot de passe d’application
 
 
 def _get_alert_recipients() -> list[str]:
@@ -36,8 +36,8 @@ def send_alert_email(subject: str, body: str, to: list[str] | None = None) -> bo
     """
     Envoie un email d'alerte via Gmail SMTP (TLS 587).
     - to = liste explicite de destinataires (optionnel).
-    - Si 'to' n'est pas fourni, on utilise les utilisateurs abonnés (receive_alerts=1).
-      S'il n'y en a aucun, fallback sur ADMIN_EMAIL.
+        - Si 'to' n'est pas fourni, on utilise les utilisateurs abonnés (receive_alerts=1).
+            S'il n'y en a aucun, on n'envoie aucun mail (pas de fallback admin).
     Retourne True si OK, False sinon.
     """
     if not APP_PASSWORD:
@@ -46,9 +46,9 @@ def send_alert_email(subject: str, body: str, to: list[str] | None = None) -> bo
 
     recipients = to if to is not None else _get_alert_recipients()
     if not recipients:
-        # Fallback : on prévient au moins l'admin.
-        print("[email] ℹ️ Aucun utilisateur abonné aux alertes — fallback admin.")
-        recipients = [ADMIN_EMAIL]
+        # Aucun destinataire configuré -> ne pas envoyer de mail du tout
+        print("[email] ℹ️ Aucun destinataire configuré pour les alertes — aucun e-mail envoyé.")
+        return False
 
     msg = MIMEMultipart()
     msg["From"] = SENDER_EMAIL
@@ -116,15 +116,44 @@ def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
     since = now - timedelta(minutes=cooldown_minutes)
 
     # 🔍 1) Si une alerte identique NON RÉSOLUE existe déjà → on ne spam pas
-    existing_open = (
-        Alert.query.filter_by(host_id=host_id, severity=severity)
+    # Rechercher toute alerte non résolue du même type (même premier mot),
+    # indépendamment de la gravité — on la mettra à jour si besoin
+    existing_unresolved = (
+        Alert.query.filter_by(host_id=host_id)
         .filter(Alert.resolved_at.is_(None))
         .filter(Alert.message.like(f"{first_word}%"))
+        .order_by(Alert.created_at.desc())
         .first()
     )
-    if existing_open:
-        logger.debug(f"[alerte] Ignorée (déjà ouverte) : {message}")
-        return existing_open
+    if existing_unresolved:
+        # Si la gravité est identique -> on ne crée rien
+        if existing_unresolved.severity == severity:
+            logger.debug(f"[alerte] Ignorée (déjà ouverte) : {message}")
+            return existing_unresolved
+        # Sinon on met à jour l'alerte existante (upgrade/downgrade)
+        try:
+            old_sev = existing_unresolved.severity
+            existing_unresolved.severity = severity
+            existing_unresolved.message = message
+            # mettre à jour le timestamp pour refléter le changement
+            existing_unresolved.created_at = now
+            db.session.add(existing_unresolved)
+            db.session.commit()
+            logger.info(f"[alerte] Mise à jour alerte {old_sev} -> {severity} pour host {host_id}: {message}")
+            # Si on monte en CRITICAL et que l'envoi est autorisé, on envoie un mail
+            if send_email and severity == "critical":
+                subject = f"[CRITICAL] {hostname} ({host_ip}) — Alerte SNMP"
+                body = (
+                    f"Une alerte critique a été détectée :\n\n"
+                    f"Hôte : {hostname} ({host_ip})\n"
+                    f"Gravité : {severity.upper()}\n"
+                    f"Détails : {message}\n"
+                )
+                send_alert_email(subject, body)
+            return existing_unresolved
+        except Exception as e:
+            logger.exception(f"[alerte] Erreur mise à jour alerte existante: {e}")
+            # Si mise à jour échoue, on continue et laisse la logique créer une nouvelle alerte
 
     # ⏳ 2) Cooldown : si une alerte similaire a été créée récemment (même type, même severité)
     #    on recrée l'alerte pour l'historique uniquement si tu le souhaites, mais SANS mail.

@@ -74,9 +74,17 @@
         <i class="bi bi-hdd-network me-1"></i> Liste des hôtes supervisés
       </h5>
 
-      <a href="{{ url_for('export_hosts_csv') }}" class="btn btn-outline-success btn-sm px-3">
-        <i class="bi bi-download me-1"></i> Exporter
-      </a>
+      <div class="d-flex align-items-center">
+        <label class="me-2 small text-muted mb-0">Affichage uptime :</label>
+        <select id="uptime-unit" class="form-select form-select-sm me-3" style="width:110px;">
+          <option value="h" selected>heures</option>
+          <option value="d">jours</option>
+        </select>
+
+        <a href="{{ url_for('export_hosts_csv') }}" class="btn btn-outline-success btn-sm px-3">
+          <i class="bi bi-download me-1"></i> Exporter
+        </a>
+      </div>
     </div>
 
     <div class="card-body p-0">
@@ -146,7 +154,8 @@
                 {% endif %}
 
                 {% if h.uptime_str and h.uptime_str != '—' %}
-                  <small class="text-muted">{{ h.uptime_str }}</small>
+                  {# stocke les secondes pour conversion JS #}
+                  <small class="text-muted uptime-display" data-uptime-seconds="{{ h.uptime_seconds }}">{{ h.uptime_str }}</small>
                 {% endif %}
               </td>
 
@@ -207,6 +216,65 @@
 <!-- 🔄 Rafraîchissement automatique -->
 <script>
   setInterval(() => location.reload(), 15000);
+</script>
+
+<script>
+// Permet d'afficher l'uptime en heures / jours / semaines selon la sélection
+document.addEventListener('DOMContentLoaded', function () {
+  const unitSelect = document.getElementById('uptime-unit');
+  if (!unitSelect) return;
+
+  function formatUptime(seconds, unit) {
+    if (!seconds && seconds !== 0) return '—';
+    const s = Number(seconds);
+    if (unit === 'h') {
+      const hours = Math.floor(s / 3600);
+      const minutes = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      return `depuis ${hours}h${String(minutes).padStart(2,'0')}m${String(secs).padStart(2,'0')}s`;
+    }
+    if (unit === 'd') {
+      const days = Math.floor(s / 86400);
+      const hours = Math.floor((s % 86400) / 3600);
+      const minutes = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+  return `depuis ${days}d${hours}h${String(minutes).padStart(2,'0')}m${String(secs).padStart(2,'0')}s`;
+    }
+    return '—';
+  }
+
+  function updateAll() {
+    const unit = unitSelect.value;
+    document.querySelectorAll('.uptime-display').forEach(el => {
+      const secs = el.dataset.uptimeSeconds ? parseInt(el.dataset.uptimeSeconds, 10) : null;
+      el.textContent = formatUptime(secs, unit);
+    });
+  }
+
+  unitSelect.addEventListener('change', updateAll);
+  // auto-select unit based on largest uptime_seconds among hosts
+  (function autoSelectUnit() {
+    const els = Array.from(document.querySelectorAll('.uptime-display'));
+    if (!els.length) {
+      // no hosts with uptime -> just run update
+      updateAll();
+      return;
+    }
+    const max = els.reduce((acc, el) => {
+      const s = el.dataset.uptimeSeconds ? parseInt(el.dataset.uptimeSeconds, 10) : 0;
+      return Math.max(acc, isNaN(s) ? 0 : s);
+    }, 0);
+
+  // Choose default unit:
+  // - days if >= 24 hours
+  // - hours otherwise
+  let defaultUnit = 'h';
+  if (max >= 24 * 3600) defaultUnit = 'd';
+
+    unitSelect.value = defaultUnit;
+    updateAll();
+  })();
+});
 </script>
 
 {% endblock %}

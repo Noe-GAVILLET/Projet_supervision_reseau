@@ -83,7 +83,28 @@ def check_thresholds(db, host, category, oid, val, Alert):
     if value >= crit:
         open_alert(db, Alert, host.id, "critical", f"{cat.upper()} critique sur {host.hostname} ({value:.1f}%)")
     elif value >= warn:
-        open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)")
+        # Si une alerte critique ouverte existe déjà pour ce type, la
+        # rétrograder en warning (au lieu de créer une warning en plus),
+        # afin d'éviter d'avoir simultanément critical + warning pour la
+        # même cause lorsqu'on élève les seuils.
+        try:
+            existing_crit = (
+                Alert.query.filter_by(host_id=host.id, severity="critical")
+                .filter(Alert.resolved_at.is_(None))
+                .filter(Alert.message.like(f"{cat.upper()}%"))
+                .all()
+            )
+            if existing_crit:
+                for a in existing_crit:
+                    a.severity = "warning"
+                    a.message = f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)"
+                    db.session.add(a)
+                db.session.commit()
+            else:
+                open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)")
+        except Exception:
+            # fallback : tenter d'ouvrir une alerte warning normalement
+            open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)")
     else:
         # Si la valeur est revenue à la normale, on clôt l’alerte
         resolve_alert(db, Alert, host.id, cat, cat.upper())

@@ -228,10 +228,17 @@ def metrics_history(host_id, category):
         .filter(Measurement.host_id == host_id)
         .filter(Measurement.meta.like(f"%{category}%"))
         .filter(Measurement.ts >= since)
-        .order_by(Measurement.ts.asc())
+        # Récupérer d'abord les dernières mesures (desc) pour éviter le
+        # cas où la fenêtre demandée contient plus de 1000 entrées et
+        # que la limite tronque les valeurs récentes.
+        .order_by(Measurement.ts.desc())
         .limit(1000)
         .all()
     )
+
+    # .all() renvoie les rows ordonnées par ts desc ; on inverse pour
+    # envoyer au client un tableau chronologique asc (temps croissant).
+    rows = list(reversed(rows))
 
     data = []
     for r in rows:
@@ -242,8 +249,16 @@ def metrics_history(host_id, category):
 
         metric_name = r.oid if category == "interfaces" else r.metric
 
+        # Retourner un ISO timestamp en UTC avec 'Z' pour éviter les ambiguïtés
+        # côté client (chart.js / date parsing). Les timestamps en DB sont
+        # stockés en UTC (naïfs), on les formate donc explicitement en UTC.
+        try:
+            ts_str = r.ts.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception:
+            ts_str = r.ts.isoformat()
+
         data.append({
-            "timestamp": r.ts.isoformat(),
+            "timestamp": ts_str,
             "metric": metric_name,
             "value": val
         })

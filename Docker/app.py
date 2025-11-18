@@ -13,7 +13,7 @@ from functools import wraps
 from typing import List, Optional
 from snmp_utils import snmp_get, snmp_walk, get_metrics
 from models import User, Host, Alert, Group, Tag, Template, CurrentMetric, Measurement, host_tags
-from seuils import get_severity
+from seuils import get_severity, check_thresholds
 import logging
 logger = logging.getLogger(__name__)
 # --- Flask / SQLAlchemy / Security ---
@@ -546,6 +546,23 @@ def host_edit(host_id: int):
         host.tags = new_tags
 
         db.session.commit()
+        # 🔄 Après modification des seuils, réévaluer les métriques courantes
+        # pour mettre à jour les alertes existantes (downgrade/resolve si nécessaire).
+        try:
+            for cat in ("cpu", "ram", "storage"):
+                cms = CurrentMetric.query.filter(CurrentMetric.host_id == host.id)
+                # filtrer par meta si possible
+                cms = cms.filter(CurrentMetric.meta.like(f"%{cat}%"))
+                for cm in cms.all():
+                    # tenter de caster la valeur
+                    try:
+                        val = float(cm.value)
+                    except Exception:
+                        # si value est JSON ou autre, skip
+                        continue
+                    check_thresholds(db, host, cat, cm.oid, val, Alert)
+        except Exception as e:
+            logger.exception(f"Erreur lors de la réévaluation des seuils pour host {host.id}: {e}")
         flash(f"Host « {host.hostname} » mis à jour.", "success")
         return redirect(url_for("admin"))
 
@@ -593,7 +610,14 @@ def admin():
 
     # 🔹 Ajoute une propriété "uptime_str" à chaque host pour affichage
     for h in hosts:
-        h.uptime_str = get_uptime_str(h)
+        # conserver aussi les secondes pour un rendu dynamique côté client
+        if not h.last_status_change:
+            h.uptime_seconds = None
+            h.uptime_str = "—"
+        else:
+            delta = datetime.utcnow() - h.last_status_change
+            h.uptime_seconds = int(delta.total_seconds())
+            h.uptime_str = get_uptime_str(h)
 
     # Comptages par statut
     total_hosts = len(hosts)

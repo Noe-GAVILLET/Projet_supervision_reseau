@@ -10,6 +10,16 @@
   <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
 </div>
 
+<div class="mb-3 text-end">
+  <label for="time-range" class="form-label small text-muted">Période :</label>
+  <select id="time-range" class="form-select d-inline w-auto">
+    <option value="10m">10 min</option>
+    <option value="1h">1 heure</option>
+    <option value="24h">24 heures</option>
+    <option value="7d">7 jours</option>
+  </select>
+</div>
+
 {% if hosts %}
   {% for entry in hosts %}
     {% set host = entry.host %}
@@ -50,9 +60,13 @@
                         <td>Core {{ loop.index }}</td>
                         <td>
                           {% set pct = load|float %}
-                          {% if pct > 90 %}
+                          {# Lire les seuils spécifiques à l'hôte si présents, sinon valeurs par défaut #}
+                          {% set cpu_conf = (host.thresholds or {}).get('cpu', {}) %}
+                          {% set warn = (cpu_conf.get('warning', 80))|float %}
+                          {% set crit = (cpu_conf.get('critical', 90))|float %}
+                          {% if pct > crit %}
                             <span class="badge bg-danger">{{ pct }}%</span>
-                          {% elif pct > 80 %}
+                          {% elif pct > warn %}
                             <span class="badge bg-warning text-dark">{{ pct }}%</span>
                           {% else %}
                             <span class="badge bg-success">{{ pct }}%</span>
@@ -92,9 +106,13 @@
                           </td>
                           <td>
                             {% set pct = info.pct|float %}
-                            {% if pct > 90 %}
+                            {# seuils host-specific si présents #}
+                            {% set ram_conf = (host.thresholds or {}).get('ram', {}) %}
+                            {% set warn = (ram_conf.get('warning', 80))|float %}
+                            {% set crit = (ram_conf.get('critical', 90))|float %}
+                            {% if pct > crit %}
                               <span class="badge bg-danger">{{ pct }}%</span>
-                            {% elif pct > 80 %}
+                            {% elif pct > warn %}
                               <span class="badge bg-warning text-dark">{{ pct }}%</span>
                             {% else %}
                               <span class="badge bg-success">{{ pct }}%</span>
@@ -135,9 +153,13 @@
                           </td>
                           <td>
                             {% set pct = info.pct|float %}
-                            {% if pct > 90 %}
+                            {# seuils host-specific si présents (storage souvent plus stricts) #}
+                            {% set storage_conf = (host.thresholds or {}).get('storage', {}) %}
+                            {% set warn = (storage_conf.get('warning', 85))|float %}
+                            {% set crit = (storage_conf.get('critical', 95))|float %}
+                            {% if pct > crit %}
                               <span class="badge bg-danger">{{ pct }}%</span>
-                            {% elif pct > 80 %}
+                            {% elif pct > warn %}
                               <span class="badge bg-warning text-dark">{{ pct }}%</span>
                             {% else %}
                               <span class="badge bg-success">{{ pct }}%</span>
@@ -169,174 +191,158 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener('DOMContentLoaded', function () {
   const category = "{{ category }}";
+  const charts = {};
+  const timeSelect = document.getElementById('time-range');
 
-  // =======================
-  // 📈 INTERFACES : graphe débit (comme host_detail)
-  // =======================
-  if (category === "interfaces") {
-    document.querySelectorAll("canvas[id^='chart-traffic-']").forEach(canvas => {
-      const hostId = canvas.id.split("-").pop();
-
-      fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
-        .then(resp => resp.json())
-        .then(data => {
-          if (!data || data.length === 0) return;
-
-          const totalIn = {};
-          const totalOut = {};
-
-          data.forEach(entry => {
-            const ts = entry.timestamp;
-            if (entry.metric.endsWith(".in")) {
-              totalIn[ts] = (totalIn[ts] || 0) + entry.value;
-            }
-            if (entry.metric.endsWith(".out")) {
-              totalOut[ts] = (totalOut[ts] || 0) + entry.value;
-            }
-          });
-
-          function computeRates(map) {
-            const entries = Object.entries(map)
-              .sort((a, b) => new Date(a[0]) - new Date(b[0]));
-            const rates = [];
-
-            for (let i = 1; i < entries.length; i++) {
-              const tPrev = new Date(entries[i - 1][0]);
-              const tCurr = new Date(entries[i][0]);
-              const dt = (tCurr - tPrev) / 1000;
-              if (dt <= 0) continue;
-
-              let delta = entries[i][1] - entries[i - 1][1];
-              if (delta < 0) delta = 0;
-
-              const mbps = (delta * 8) / (dt * 1_000_000);
-              rates.push({ x: entries[i][0], y: mbps });
-            }
-            return rates;
-          }
-
-          const inData  = computeRates(totalIn);
-          const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y }));
-
-          new Chart(canvas.getContext("2d"), {
-            type: "line",
-            data: {
-              datasets: [
-                {
-                  label: "Inbound (Mbps)",
-                  data: inData,
-                  tension: 0.3,
-                  pointRadius: 0,
-                  borderWidth: 2
-                },
-                {
-                  label: "Outbound (Mbps)",
-                  data: outData,
-                  tension: 0.3,
-                  pointRadius: 0,
-                  borderWidth: 2
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              interaction: { mode: "index", intersect: false },
-              plugins: {
-                legend: { position: "top" },
-                title: {
-                  display: true,
-                  text: "Overall Network Traffic (Mbps, 10 min)"
-                },
-                tooltip: {
-                  callbacks: {
-                    label: ctx =>
-                      `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
-                  }
-                }
-              },
-              scales: {
-                x: {
-                  type: "time",
-                  time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
-                  title: { display: true, text: "Horodatage" }
-                },
-                y: {
-                  beginAtZero: true,
-                  title: { display: true, text: "Débit (Mbps)" },
-                  ticks: { callback: v => Math.abs(v) }
-                }
-              }
-            }
-          });
-        })
-        .catch(err => console.error("Erreur interfaces:", err));
-    });
-
-    return; // ne pas exécuter la partie CPU/RAM/Storage
+  function getMinutes() {
+    const val = timeSelect ? timeSelect.value : '10m';
+    if (val.endsWith('m')) return parseInt(val);
+    if (val.endsWith('h')) return parseInt(val) * 60;
+    if (val.endsWith('d')) return parseInt(val) * 24 * 60;
+    return 10;
   }
 
-  // =======================
-  // 📈 CPU / RAM / STORAGE
-  // =======================
-  document.querySelectorAll("canvas[id^='chart-{{ category }}-']").forEach(canvas => {
-    const hostId = canvas.id.split("-").pop();
+  // ---- Interfaces (traffic) ----
+  function loadInterfacesCanvas(canvas) {
+    const hostId = canvas.id.split('-').pop();
+    const minutes = getMinutes();
 
-    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
-      .then(resp => resp.json())
+    fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=${minutes}`)
+      .then(r => r.json())
       .then(data => {
         if (!data || data.length === 0) return;
 
-        const byMetric = {};
-        const metricMap = {};
-        let coreIndex = 1;
-
+        const totalIn = {}, totalOut = {};
         data.forEach(entry => {
-          let label = entry.metric;
-
-          // CPU : "Core 1, Core 2..."
-          if (category === "cpu") {
-            if (!metricMap[label]) metricMap[label] = `Core ${coreIndex++}`;
-            label = metricMap[label];
-          }
-
-          if (!byMetric[label]) byMetric[label] = [];
-          byMetric[label].push({ x: entry.timestamp, y: entry.value });
+          const ts = entry.timestamp;
+          if (entry.metric.endsWith('.in')) totalIn[ts] = (totalIn[ts] || 0) + entry.value;
+          if (entry.metric.endsWith('.out')) totalOut[ts] = (totalOut[ts] || 0) + entry.value;
         });
 
-        // RAM : ne garder qu'une série claire ("Physical memory")
-        if (category === "ram") {
-          const filtered = {};
-          if (byMetric["pct"]) {
-            filtered["Physical memory"] = byMetric["pct"];
+        function computeRates(map) {
+          const entries = Object.entries(map).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+          const rates = [];
+          for (let i = 1; i < entries.length; i++) {
+            const tPrev = new Date(entries[i - 1][0]);
+            const tCurr = new Date(entries[i][0]);
+            const dt = (tCurr - tPrev) / 1000;
+            if (dt <= 0) continue;
+            let delta = entries[i][1] - entries[i - 1][1];
+            if (delta < 0) delta = 0;
+            const mbps = (delta * 8) / (dt * 1_000_000);
+            rates.push({ x: entries[i][0], y: mbps });
           }
-          Object.keys(byMetric).forEach(k => delete byMetric[k]);
-          Object.assign(byMetric, filtered);
+          return rates;
         }
 
-        // STORAGE : même logique que host_detail (clé .pct, filtrage)
-        if (category === "storage") {
-          const filtered = {};
+        const inData = computeRates(totalIn);
+        const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y }));
+        const datasets = [
+          {
+            label: 'Inbound (Mbps)',
+            data: inData,
+            borderColor: 'rgba(0, 200, 83, 0.9)',
+            backgroundColor: 'rgba(0, 200, 83, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          },
+          {
+            label: 'Outbound (Mbps)',
+            data: outData,
+            borderColor: 'rgba(244, 67, 54, 0.9)',
+            backgroundColor: 'rgba(244, 67, 54, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }
+        ];
 
-          data.forEach(entry => {
-            let label = entry.metric;
-
-            // on ne garde que les métriques en pourcentage
-            if (!label.endsWith(".pct")) return;
-
-            const lname = label.toLowerCase();
-
-            label = label.replace(/\.pct$/, ""); // enlever le suffixe .pct
-
-            if (!filtered[label]) filtered[label] = [];
-            filtered[label].push({ x: entry.timestamp, y: entry.value });
-          });
-
-          Object.keys(byMetric).forEach(k => delete byMetric[k]);
-          Object.assign(byMetric, filtered);
+        const id = canvas.id;
+        if (charts[id]) {
+          charts[id].data.datasets = datasets;
+          charts[id].options.plugins.title.text = `Overall Network Traffic (Mbps, ${minutes} min)`;
+          charts[id].update();
+          return;
         }
 
+        charts[id] = new Chart(canvas.getContext('2d'), {
+          type: 'line',
+          data: { datasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            stacked: false,
+            plugins: {
+              legend: { position: 'top' },
+              title: { display: true, text: `Overall Network Traffic (Mbps, ${minutes} min)` },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps` } }
+            },
+            scales: {
+              x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Horodatage' } },
+              y: { beginAtZero: true, title: { display: true, text: 'Débit (Mbps)' }, ticks: { callback: (v) => Math.abs(v) } }
+            }
+          }
+        });
+      })
+      .catch(e => console.error('Erreur network traffic:', e));
+  }
+
+  // ---- Metric charts (cpu/ram/storage) ----
+  function buildByMetric(data) {
+    const byMetric = {};
+    const metricMap = {};
+    let coreIndex = 1;
+    data.forEach(entry => {
+      let label = entry.metric;
+      if (category === 'cpu') {
+        if (!metricMap[label]) metricMap[label] = `Core ${coreIndex++}`;
+        label = metricMap[label];
+      }
+      if (!byMetric[label]) byMetric[label] = [];
+      byMetric[label].push({ x: entry.timestamp, y: entry.value });
+    });
+
+    if (category === 'ram') {
+      const filtered = {};
+      if (byMetric['pct']) filtered['Physical memory'] = byMetric['pct'];
+      Object.keys(byMetric).forEach(k => delete byMetric[k]);
+      Object.assign(byMetric, filtered);
+    }
+
+    if (category === 'storage') {
+      const filtered = {};
+      data.forEach(entry => {
+        let label = entry.metric;
+        if (!label.endsWith('.pct')) return;
+        const lname = label.toLowerCase();
+        const ignored = ['shm','tmp','run','dev','proc','sys'];
+        if (ignored.some(sub => lname.includes(sub))) return;
+        label = label.replace(/\.pct$/, '');
+        if (!filtered[label]) filtered[label] = [];
+        filtered[label].push({ x: entry.timestamp, y: entry.value });
+      });
+      Object.keys(byMetric).forEach(k => delete byMetric[k]);
+      Object.assign(byMetric, filtered);
+    }
+
+    return byMetric;
+  }
+
+  function loadMetricCanvas(canvas) {
+    const hostId = canvas.id.split('-').pop();
+    const minutes = getMinutes();
+    fetch(`/api/poll/metrics/${hostId}/${category}?minutes=${minutes}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data || data.length === 0) return;
+        const byMetric = buildByMetric(data);
         const datasets = Object.entries(byMetric).map(([metric, points]) => ({
           label: metric,
           data: points.map(p => ({ x: p.x, y: p.y })),
@@ -346,44 +352,45 @@ document.addEventListener("DOMContentLoaded", function () {
           pointHoverRadius: 4
         }));
 
-        new Chart(canvas.getContext("2d"), {
-          type: "line",
+        const id = canvas.id;
+        const minutesText = `${minutes} min`;
+        if (charts[id]) {
+          charts[id].data.datasets = datasets;
+          charts[id].options.plugins.title.text = `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})`;
+          charts[id].update();
+          return;
+        }
+
+        charts[id] = new Chart(canvas.getContext('2d'), {
+          type: 'line',
           data: { datasets },
           options: {
             responsive: true,
             plugins: {
-              title: {
-                display: true,
-                text: `${category.toUpperCase()} - Host ${hostId}`
-              },
-              tooltip: {
-                callbacks: {
-                  label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
-                }
-              }
+              title: { display: true, text: `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})` },
+              tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } }
             },
-            scales: {
-              x: {
-                type: "time",
-                time: { unit: "minute" },
-                title: { display: true, text: "Temps" }
-              },
-              y: {
-                beginAtZero: true,
-                max: 100,
-                title: { display: true, text: "Utilisation (%)" }
-              }
-            }
+            scales: { x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } }, y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } } }
           }
         });
       })
-      .catch(err => console.error(`Erreur ${category} (${canvas.id}) :`, err));
-  });
-});
-</script>
+      .catch(e => console.error(`Erreur ${category} (${canvas.id}) :`, e));
+  }
 
-<script>
-  setInterval(() => location.reload(), 20000);
+  function loadCharts() {
+    // interfaces canvases
+    document.querySelectorAll("canvas[id^='chart-traffic-']").forEach(c => loadInterfacesCanvas(c));
+    // other metric canvases
+    document.querySelectorAll(`canvas[id^='chart-${category}-']`).forEach(c => loadMetricCanvas(c));
+  }
+
+  if (timeSelect) timeSelect.addEventListener('change', () => loadCharts());
+
+  // initial load
+  loadCharts();
+  // refresh every 20s
+  setInterval(loadCharts, 20000);
+});
 </script>
 
 </body>
