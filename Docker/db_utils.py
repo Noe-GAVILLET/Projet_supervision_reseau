@@ -164,9 +164,21 @@ def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
         .first()
     )
     if last_similar and last_similar.created_at >= since:
-        # Cooldown actif → pas d'e-mail
-        send_email = False
-        logger.info(f"[alerte] ⏱️ Cooldown actif ({cooldown_minutes} min) pour {hostname} – pas d'e-mail.")
+        # Cooldown actif → on réutilise / rouvre l'alerte existante au lieu d'en créer une nouvelle
+        try:
+            send_email = False
+            logger.info(f"[alerte] ⏱️ Cooldown actif ({cooldown_minutes} min) pour {hostname} – mise à jour de l'alerte existante.")
+            # Ré-ouvrir l'alerte si elle était résolue récemment
+            last_similar.message = message
+            last_similar.severity = severity
+            last_similar.created_at = now
+            last_similar.resolved_at = None
+            db.session.add(last_similar)
+            db.session.commit()
+            return last_similar
+        except Exception as e:
+            logger.exception(f"[alerte] Erreur lors de la réutilisation d'une alerte existante: {e}")
+            # en cas d'erreur on continue et on laisse la logique créer une nouvelle alerte
 
     # ✅ 3) Création de la nouvelle alerte (on conserve l'historique dans /alerts)
     alert = Alert(

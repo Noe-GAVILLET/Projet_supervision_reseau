@@ -61,7 +61,7 @@
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
           <tr class="text-center">
-            <th>Horodatage (UTC)</th>
+            <th>Horodatage (Europe/Paris)</th>
             <th>Hôte</th>
             <th>Gravité</th>
             <th>Message</th>
@@ -83,10 +83,10 @@
               {% endif %}
             ">
               <td class="text-center">
-                <div class="fw-semibold">{{ alert.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+                <div class="fw-semibold">{{ alert.created_at|format_dt }}</div>
                 {% if alert.resolved_at %}
                   <small class="text-success d-block mt-1">
-                    ✅ {{ alert.resolved_at.strftime("%Y-%m-%d %H:%M:%S") }}
+                    ✅ {{ alert.resolved_at|format_dt }}
                   </small>
                 {% endif %}
               </td>

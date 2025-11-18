@@ -8,7 +8,7 @@ import random
 import logging
 from logging.handlers import RotatingFileHandler
 from io import TextIOWrapper
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import List, Optional
 from snmp_utils import snmp_get, snmp_walk, get_metrics
@@ -71,6 +71,30 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # ✅ Lier directement db à app (pas de init_app)
 db.init_app(app)
+
+# --- Jinja filter: format datetime in a given timezone (defaults to Europe/Paris)
+from zoneinfo import ZoneInfo
+
+def format_dt(dt, fmt="%Y-%m-%d %H:%M:%S", tz_name="Europe/Paris"):
+    """Format a datetime for templates, converting from UTC if naive.
+    If dt is None, returns a dash. Assumes stored datetimes are UTC.
+    """
+    if not dt:
+        return "—"
+    try:
+        if dt.tzinfo is None:
+            # treat DB timestamps as UTC
+            dt = dt.replace(tzinfo=timezone.utc)
+        tz = ZoneInfo(tz_name)
+        return dt.astimezone(tz).strftime(fmt)
+    except Exception as e:
+        logger.exception("format_dt error: %s", e)
+        try:
+            return dt.strftime(fmt)
+        except Exception:
+            return str(dt)
+
+app.jinja_env.filters['format_dt'] = format_dt
 
 # Optionnel : ne pas forcer la création si le schéma existe déjà en BDD
 # with app.app_context():
