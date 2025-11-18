@@ -5,7 +5,7 @@
 
 <div class="d-flex align-items-center justify-content-between mb-4">
   <h4 class="mb-0 text-capitalize">
-    Vue globale catégorie : {{ category }}
+    Vue globale Catégorie : {{ category }}
   </h4>
   <a class="btn btn-primary" href="{{ url_for('admin') }}">Retour</a>
 </div>
@@ -34,57 +34,22 @@
         {% else %}
           {% set metrics = entry.metrics %}
           {% if metrics %}
-            {% if category == "cpu" %}
-              <table class="table table-sm">
-                <thead><tr><th>Core</th><th>Charge</th></tr></thead>
-                <tbody>
-                  {% for cpu_oid, load in metrics.items() %}
-                    <tr>
-                      <td>Core {{ loop.index }}</td>
-                      <td>
-                        {% set pct = load|float %}
-                        {% if pct > 90 %}
-                          <span class="badge bg-danger">{{ pct }}%</span>
-                        {% elif pct > 80 %}
-                          <span class="badge bg-warning text-dark">{{ pct }}%</span>
-                        {% else %}
-                          <span class="badge bg-success">{{ pct }}%</span>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            {% endif %}
 
-            {% if category == "ram" %}
-              <table class="table table-sm">
-                <thead><tr><th>Type</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
-                <tbody>
-                  {% for name, info in metrics.items() %}
-                    {% if info is mapping %}
+            {% if category == "interfaces" %}
+              <!-- Vue interfaces : uniquement le graphe (comme host_detail) -->
+              <canvas id="chart-traffic-{{ host.id }}" height="100"></canvas>
+
+            {% else %}
+
+              {% if category == "cpu" %}
+                <table class="table table-sm">
+                  <thead><tr><th>Core</th><th>Charge</th></tr></thead>
+                  <tbody>
+                    {% for cpu_oid, load in metrics.items() %}
                       <tr>
-                        <td>{{ name }}</td>
+                        <td>Core {{ loop.index }}</td>
                         <td>
-                          {% if info.used >= 1073741824 %}
-                            {{ "%.1f"|format(info.used / 1073741824) }} Go
-                          {% elif info.used >= 1048576 %}
-                            {{ "%.1f"|format(info.used / 1048576) }} Mo
-                          {% else %}
-                            {{ "%.1f"|format(info.used / 1024) }} Ko
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% if info.total >= 1073741824 %}
-                            {{ "%.1f"|format(info.total / 1073741824) }} Go
-                          {% elif info.total >= 1048576 %}
-                            {{ "%.1f"|format(info.total / 1048576) }} Mo
-                          {% else %}
-                            {{ "%.1f"|format(info.total / 1024) }} Ko
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% set pct = info.pct|float %}
+                          {% set pct = load|float %}
                           {% if pct > 90 %}
                             <span class="badge bg-danger">{{ pct }}%</span>
                           {% elif pct > 80 %}
@@ -94,56 +59,101 @@
                           {% endif %}
                         </td>
                       </tr>
-                    {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
-            {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% endif %}
 
-            {% if category == "storage" %}
-              <table class="table table-sm">
-                <thead><tr><th>Volume</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
-                <tbody>
-                  {% for name, info in metrics.items() %}
-                    {% if info is mapping %}
-                      <tr>
-                        <td>{{ name }}</td>
-                        <td>
-                          {% if info.used >= 1073741824 %}
-                            {{ "%.1f"|format(info.used / 1073741824) }} Go
-                          {% elif info.used >= 1048576 %}
-                            {{ "%.1f"|format(info.used / 1048576) }} Mo
-                          {% else %}
-                            {{ "%.1f"|format(info.used / 1024) }} Ko
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% if info.total >= 1073741824 %}
-                            {{ "%.1f"|format(info.total / 1073741824) }} Go
-                          {% elif info.total >= 1048576 %}
-                            {{ "%.1f"|format(info.total / 1048576) }} Mo
-                          {% else %}
-                            {{ "%.1f"|format(info.total / 1024) }} Ko
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% set pct = info.pct|float %}
-                          {% if pct > 90 %}
-                            <span class="badge bg-danger">{{ pct }}%</span>
-                          {% elif pct > 80 %}
-                            <span class="badge bg-warning text-dark">{{ pct }}%</span>
-                          {% else %}
-                            <span class="badge bg-success">{{ pct }}%</span>
-                          {% endif %}
-                        </td>
-                      </tr>
-                    {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
-            {% endif %}
+              {% if category == "ram" %}
+                <table class="table table-sm">
+                  <thead><tr><th>Type</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+                  <tbody>
+                    {% for name, info in metrics.items() %}
+                      {% if info is mapping %}
+                        <tr>
+                          <td>{{ name }}</td>
+                          <td>
+                            {% if info.used >= 1073741824 %}
+                              {{ "%.1f"|format(info.used / 1073741824) }} Go
+                            {% elif info.used >= 1048576 %}
+                              {{ "%.1f"|format(info.used / 1048576) }} Mo
+                            {% else %}
+                              {{ "%.1f"|format(info.used / 1024) }} Ko
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% if info.total >= 1073741824 %}
+                              {{ "%.1f"|format(info.total / 1073741824) }} Go
+                            {% elif info.total >= 1048576 %}
+                              {{ "%.1f"|format(info.total / 1048576) }} Mo
+                            {% else %}
+                              {{ "%.1f"|format(info.total / 1024) }} Ko
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% set pct = info.pct|float %}
+                            {% if pct > 90 %}
+                              <span class="badge bg-danger">{{ pct }}%</span>
+                            {% elif pct > 80 %}
+                              <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                            {% else %}
+                              <span class="badge bg-success">{{ pct }}%</span>
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% endif %}
 
-            <canvas id="chart-{{ category }}-{{ host.id }}" height="100"></canvas>
+              {% if category == "storage" %}
+                <table class="table table-sm">
+                  <thead><tr><th>Volume</th><th>Utilisé</th><th>Total</th><th>%</th></tr></thead>
+                  <tbody>
+                    {% for name, info in metrics.items() %}
+                      {% if info is mapping %}
+                        <tr>
+                          <td>{{ name }}</td>
+                          <td>
+                            {% if info.used >= 1073741824 %}
+                              {{ "%.1f"|format(info.used / 1073741824) }} Go
+                            {% elif info.used >= 1048576 %}
+                              {{ "%.1f"|format(info.used / 1048576) }} Mo
+                            {% else %}
+                              {{ "%.1f"|format(info.used / 1024) }} Ko
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% if info.total >= 1073741824 %}
+                              {{ "%.1f"|format(info.total / 1073741824) }} Go
+                            {% elif info.total >= 1048576 %}
+                              {{ "%.1f"|format(info.total / 1048576) }} Mo
+                            {% else %}
+                              {{ "%.1f"|format(info.total / 1024) }} Ko
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% set pct = info.pct|float %}
+                            {% if pct > 90 %}
+                              <span class="badge bg-danger">{{ pct }}%</span>
+                            {% elif pct > 80 %}
+                              <span class="badge bg-warning text-dark">{{ pct }}%</span>
+                            {% else %}
+                              <span class="badge bg-success">{{ pct }}%</span>
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% endif %}
+
+              <!-- Graphe standard pour cpu/ram/storage -->
+              <canvas id="chart-{{ category }}-{{ host.id }}" height="100"></canvas>
+
+            {% endif %}
           {% endif %}
         {% endif %}
       </div>
@@ -161,9 +171,116 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const category = "{{ category }}";
-  const canvases = document.querySelectorAll("canvas[id^='chart-']");
 
-  canvases.forEach(canvas => {
+  // =======================
+  // 📈 INTERFACES : graphe débit (comme host_detail)
+  // =======================
+  if (category === "interfaces") {
+    document.querySelectorAll("canvas[id^='chart-traffic-']").forEach(canvas => {
+      const hostId = canvas.id.split("-").pop();
+
+      fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=10`)
+        .then(resp => resp.json())
+        .then(data => {
+          if (!data || data.length === 0) return;
+
+          const totalIn = {};
+          const totalOut = {};
+
+          data.forEach(entry => {
+            const ts = entry.timestamp;
+            if (entry.metric.endsWith(".in")) {
+              totalIn[ts] = (totalIn[ts] || 0) + entry.value;
+            }
+            if (entry.metric.endsWith(".out")) {
+              totalOut[ts] = (totalOut[ts] || 0) + entry.value;
+            }
+          });
+
+          function computeRates(map) {
+            const entries = Object.entries(map)
+              .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+            const rates = [];
+
+            for (let i = 1; i < entries.length; i++) {
+              const tPrev = new Date(entries[i - 1][0]);
+              const tCurr = new Date(entries[i][0]);
+              const dt = (tCurr - tPrev) / 1000;
+              if (dt <= 0) continue;
+
+              let delta = entries[i][1] - entries[i - 1][1];
+              if (delta < 0) delta = 0;
+
+              const mbps = (delta * 8) / (dt * 1_000_000);
+              rates.push({ x: entries[i][0], y: mbps });
+            }
+            return rates;
+          }
+
+          const inData  = computeRates(totalIn);
+          const outData = computeRates(totalOut).map(p => ({ x: p.x, y: -p.y }));
+
+          new Chart(canvas.getContext("2d"), {
+            type: "line",
+            data: {
+              datasets: [
+                {
+                  label: "Inbound (Mbps)",
+                  data: inData,
+                  tension: 0.3,
+                  pointRadius: 0,
+                  borderWidth: 2
+                },
+                {
+                  label: "Outbound (Mbps)",
+                  data: outData,
+                  tension: 0.3,
+                  pointRadius: 0,
+                  borderWidth: 2
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: "index", intersect: false },
+              plugins: {
+                legend: { position: "top" },
+                title: {
+                  display: true,
+                  text: "Overall Network Traffic (Mbps, 10 min)"
+                },
+                tooltip: {
+                  callbacks: {
+                    label: ctx =>
+                      `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
+                  title: { display: true, text: "Horodatage" }
+                },
+                y: {
+                  beginAtZero: true,
+                  title: { display: true, text: "Débit (Mbps)" },
+                  ticks: { callback: v => Math.abs(v) }
+                }
+              }
+            }
+          });
+        })
+        .catch(err => console.error("Erreur interfaces:", err));
+    });
+
+    return; // ne pas exécuter la partie CPU/RAM/Storage
+  }
+
+  // =======================
+  // 📈 CPU / RAM / STORAGE
+  // =======================
+  document.querySelectorAll("canvas[id^='chart-{{ category }}-']").forEach(canvas => {
     const hostId = canvas.id.split("-").pop();
 
     fetch(`/api/poll/metrics/${hostId}/${category}?minutes=10`)
@@ -177,41 +294,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
         data.forEach(entry => {
           let label = entry.metric;
+
+          // CPU : "Core 1, Core 2..."
           if (category === "cpu") {
             if (!metricMap[label]) metricMap[label] = `Core ${coreIndex++}`;
             label = metricMap[label];
           }
+
           if (!byMetric[label]) byMetric[label] = [];
           byMetric[label].push({ x: entry.timestamp, y: entry.value });
         });
 
+        // RAM : ne garder qu'une série claire ("Physical memory")
         if (category === "ram") {
           const filtered = {};
-          if (byMetric["pct"]) filtered["Physical memory"] = byMetric["pct"];
+          if (byMetric["pct"]) {
+            filtered["Physical memory"] = byMetric["pct"];
+          }
+          Object.keys(byMetric).forEach(k => delete byMetric[k]);
           Object.assign(byMetric, filtered);
         }
 
+        // STORAGE : même logique que host_detail (clé .pct, filtrage)
         if (category === "storage") {
-        const filtered = {};
+          const filtered = {};
 
-        data.forEach(entry => {
+          data.forEach(entry => {
             let label = entry.metric;
-            if (!label.endsWith(".pct")) return; // garder uniquement les pourcentages
 
-            // filtrer les volumes inutiles
+            // on ne garde que les métriques en pourcentage
+            if (!label.endsWith(".pct")) return;
+
             const lname = label.toLowerCase();
-            const ignored = ["shm", "tmp", "run", "dev", "proc", "sys"];
-            if (ignored.some(sub => lname.includes(sub))) return;
 
-            // simplifier le nom
-            label = label.replace(/\.pct$/, "");
+            label = label.replace(/\.pct$/, ""); // enlever le suffixe .pct
+
             if (!filtered[label]) filtered[label] = [];
             filtered[label].push({ x: entry.timestamp, y: entry.value });
-        });
+          });
 
-        // vider l'ancien objet avant remplacement
-        Object.keys(byMetric).forEach(k => delete byMetric[k]);
-        Object.assign(byMetric, filtered);
+          Object.keys(byMetric).forEach(k => delete byMetric[k]);
+          Object.assign(byMetric, filtered);
         }
 
         const datasets = Object.entries(byMetric).map(([metric, points]) => ({
@@ -219,18 +342,20 @@ document.addEventListener("DOMContentLoaded", function () {
           data: points.map(p => ({ x: p.x, y: p.y })),
           fill: false,
           tension: 0.2,
-          pointRadius: 0,      
+          pointRadius: 0,
           pointHoverRadius: 4
         }));
 
-        const ctx = canvas.getContext("2d");
-        new Chart(ctx, {
-          type: 'line',
+        new Chart(canvas.getContext("2d"), {
+          type: "line",
           data: { datasets },
           options: {
             responsive: true,
             plugins: {
-              title: { display: true, text: `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')}` },
+              title: {
+                display: true,
+                text: `${category.toUpperCase()} - Host ${hostId}`
+              },
               tooltip: {
                 callbacks: {
                   label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
@@ -238,8 +363,16 @@ document.addEventListener("DOMContentLoaded", function () {
               }
             },
             scales: {
-              x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } },
-              y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } }
+              x: {
+                type: "time",
+                time: { unit: "minute" },
+                title: { display: true, text: "Temps" }
+              },
+              y: {
+                beginAtZero: true,
+                max: 100,
+                title: { display: true, text: "Utilisation (%)" }
+              }
             }
           }
         });
@@ -252,5 +385,6 @@ document.addEventListener("DOMContentLoaded", function () {
 <script>
   setInterval(() => location.reload(), 20000);
 </script>
+
 </body>
 {% endblock %}

@@ -258,10 +258,17 @@ def get_metrics(ip: str, community: str, port: int, category: str,
     elif category == "interfaces":
         ifDescr = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.2")
         ifOperStatus = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.8")
+
+        # Tentative haute capacité
         ifInOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.31.1.1.1.6")
         ifOutOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.31.1.1.1.10")
 
-        # 🔁 fallback vers IF-MIB standard si ifXTable non dispo
+        # WINDOWS ne supporte pas ifXTable la plupart du temps → forcer les OID standard
+        if group == "windows":
+            ifInOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.10")
+            ifOutOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.16")
+
+        # fallback si ifXTable vide
         if not ifInOctets:
             ifInOctets = snmp_walk(ip, community, port, "1.3.6.1.2.1.2.2.1.10")
         if not ifOutOctets:
@@ -273,14 +280,13 @@ def get_metrics(ip: str, community: str, port: int, category: str,
             idx = descr_oid.split(".")[-1]
             lname = name.lower()
 
-            # 🧹 Filtrage des interfaces virtuelles / inutiles
             ignored_keywords = [
                 "miniport", "virtual", "npcap", "filter", "adapter-wfp", "qos",
                 "native wifi", "teredo", "6to4", "wan", "debug", "kernel",
                 "isatap", "vmware", "vbox", "pppoe", "bluetooth", "loopback", "microsoft"
             ]
             if any(k in lname for k in ignored_keywords):
-                continue  # On skippe ces interfaces
+                continue
 
             state_raw = ifOperStatus.get(f"1.3.6.1.2.1.2.2.1.8.{idx}", "2")
             state = "up" if state_raw.endswith("1") else "down"
@@ -291,15 +297,34 @@ def get_metrics(ip: str, community: str, port: int, category: str,
             except ValueError:
                 in_val, out_val = 0, 0
 
+            # Si forçage Windows → lecture des OID standard avec l'index correct
+            if group == "windows":
+                try:
+                    in_val = int(ifInOctets.get(f"1.3.6.1.2.1.2.2.1.10.{idx}", "0"))
+                    out_val = int(ifOutOctets.get(f"1.3.6.1.2.1.2.2.1.16.{idx}", "0"))
+                except ValueError:
+                    in_val, out_val = 0, 0
+
             info = {"state": state, "in": in_val, "out": out_val}
 
-            # 🕒 Calcul des débits (si host_id présent)
             if host_id:
                 now = datetime.utcnow()
-                prev_in = Measurement.query.filter_by(host_id=host_id, oid=f"{name}.in").order_by(Measurement.ts.desc()).first()
-                prev_out = Measurement.query.filter_by(host_id=host_id, oid=f"{name}.out").order_by(Measurement.ts.desc()).first()
-                info["in_mbps"] = calculate_rate(in_val, prev_in.value, prev_in.ts, now) if prev_in else 0.0
-                info["out_mbps"] = calculate_rate(out_val, prev_out.value, prev_out.ts, now) if prev_out else 0.0
+
+                prev_in = Measurement.query.filter_by(
+                    host_id=host_id, oid=f"{name}.in"
+                ).order_by(Measurement.ts.desc()).first()
+
+                prev_out = Measurement.query.filter_by(
+                    host_id=host_id, oid=f"{name}.out"
+                ).order_by(Measurement.ts.desc()).first()
+
+                info["in_mbps"] = calculate_rate(
+                    in_val, prev_in.value, prev_in.ts, now
+                ) if prev_in else 0.0
+
+                info["out_mbps"] = calculate_rate(
+                    out_val, prev_out.value, prev_out.ts, now
+                ) if prev_out else 0.0
             else:
                 info["in_mbps"], info["out_mbps"] = 0.0, 0.0
 
