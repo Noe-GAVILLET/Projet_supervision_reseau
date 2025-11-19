@@ -147,11 +147,11 @@
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Overview</a>
               <ul class="dropdown-menu">
 
-                <li><a class="dropdown-item" href="{{ url_for('admin') }}">Dashboard</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('localisation') }}">Localisation</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('admin') }}">📊 Dashboard</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('localisation') }}">🗺️ Localisation</a></li>
 
                 {% if session['role'] == 'admin' %}
-                <li><a class="dropdown-item" href="{{ url_for('host_new') }}">Ajouter un hôte</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('host_new') }}">💻 Ajouter un hôte</a></li>
                 {% endif %}
 
               </ul>
@@ -178,10 +178,10 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Health</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='cpu') }}">CPU</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='ram') }}">RAM</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='storage') }}">Storage</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='interfaces') }}">Interfaces</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='cpu') }}">📟 CPU</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='ram') }}">🚀 RAM</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='storage') }}">💿 Storage</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('category_overview', category='interfaces') }}">🌐 Interfaces</a></li>
               </ul>
             </li>
 
