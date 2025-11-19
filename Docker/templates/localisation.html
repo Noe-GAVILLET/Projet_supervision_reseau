@@ -39,8 +39,11 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-  const hosts = {{ hosts|tojson|safe }};
   document.addEventListener('DOMContentLoaded', function () {
+    // parse hosts JSON payload placed in a separate script tag to avoid
+    // Jinja-in-JS parsing problems in editors/tools
+    const hostsPayload = document.getElementById('hosts-data');
+    const hosts = hostsPayload ? JSON.parse(hostsPayload.textContent || '[]') : [];
     const map = L.map('map').setView([46.0, 2.0], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -94,5 +97,8 @@
     }
   });
 </script>
+
+<!-- JSON payload (kept outside of inline JS to avoid parsing issues) -->
+<script id="hosts-data" type="application/json">{{ hosts|tojson|safe }}</script>
 
 {% endblock %}
