@@ -24,6 +24,11 @@ from flask import (
 from database import db
 from sqlalchemy import or_, func, case
 from werkzeug.security import check_password_hash, generate_password_hash
+from flask import Response, stream_with_context
+import json
+import subprocess
+import ipaddress
+from zoneinfo import ZoneInfo
 
 os.makedirs("logs", exist_ok=True)
 log_file = "logs/supervision.log"
@@ -96,6 +101,9 @@ def format_dt(dt, fmt="%Y-%m-%d %H:%M:%S", tz_name="Europe/Paris"):
 
 app.jinja_env.filters['format_dt'] = format_dt
 
+
+# scanner routes are defined after auth decorators to avoid NameError when using @login_required
+
 # Optionnel : ne pas forcer la création si le schéma existe déjà en BDD
 # with app.app_context():
 #     db.create_all()
@@ -121,6 +129,82 @@ def admin_required(view):
             return redirect(url_for("admin"))
         return view(*args, **kwargs)
     return wrapped
+
+
+# -------------------- Scanner SNMP (SSE) --------------------
+def snmp_get_raw(ip, community="public", timeout=1):
+    """Try snmpget sysName via system snmpget command. Returns string or None."""
+    try:
+        cmd = ["snmpget", "-v2c", "-c", community, str(ip), "1.3.6.1.2.1.1.5.0"]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=timeout).decode(errors='ignore').strip()
+        return out
+    except Exception:
+        return None
+
+
+@app.route('/devices/scanner')
+@login_required
+def devices_scanner():
+    # page UI
+    return render_template('scanner.html')
+
+
+@app.route('/api/scan')
+@login_required
+def api_scan():
+    network = request.args.get('network')
+    community = request.args.get('community', 'public')
+    if not network:
+        return jsonify({'error': 'network parameter required'}), 400
+
+    def generate():
+        try:
+            net = ipaddress.ip_network(network)
+            hosts = list(net.hosts())
+            total = len(hosts)
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'error': 'invalid network', 'msg': str(e)})}\n\n"
+            return
+
+        # send meta
+        yield f"event: meta\ndata: {json.dumps({'total': total})}\n\n"
+
+        done = 0
+        for ip in hosts:
+            done += 1
+            try:
+                res = snmp_get_raw(ip, community=community)
+                # progress event
+                yield f"event: progress\ndata: {json.dumps({'done': done, 'total': total})}\n\n"
+                if res:
+                    # normalize sysname: take last line or the response
+                    raw = res.split('\n')[-1]
+                    sysname = raw
+                    try:
+                        # Extract quoted value if present: STRING: "name"
+                        m = re.search(r'"([^"]+)"', raw)
+                        if m:
+                            sysname = m.group(1)
+                        else:
+                            # remove common prefix like 'OID = STRING: ' if present
+                            sysname = re.sub(r'^.*=\s*STRING:\s*', '', raw)
+                            sysname = sysname.strip().strip('"')
+                    except Exception:
+                        # fallback to the raw line
+                        sysname = raw.strip()
+
+                    payload = {'ip': str(ip), 'sysname': sysname}
+                    yield f"event: device\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            except GeneratorExit:
+                break
+            except Exception:
+                # continue scanning
+                yield f"event: progress\ndata: {json.dumps({'done': done, 'total': total})}\n\n"
+
+        # done
+        yield f"event: done\ndata: {json.dumps({'done': done, 'total': total})}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 def verify_password(stored_hash: str, password_plain: str) -> bool:
     """
@@ -666,6 +750,12 @@ def admin():
     except Exception:
         alerts = []
 
+    # Nombre total d'alertes actives (non résolues)
+    try:
+        alerts_count = Alert.query.filter(Alert.resolved_at.is_(None)).count()
+    except Exception:
+        alerts_count = 0
+
     # Dictionnaire global de stats
     stats = {
         "total_hosts": total_hosts,
@@ -685,7 +775,8 @@ def admin():
         hosts_warning=hosts_warning,
         hosts_unknown=hosts_unknown,
         stats=stats,
-        alerts=alerts
+        alerts=alerts,
+        alerts_count=alerts_count
     )
 
 from datetime import datetime
@@ -1179,7 +1270,16 @@ def host_new():
         flash(f"Host « {hostname} » créé.", "success")
         return redirect(url_for("admin"))
 
-    return render_template("host_new.html", groups=groups, templates=templates)
+    # Pre-fill form fields from query parameters when present (scanner links)
+    initial_hostname = request.args.get('hostname', '')
+    initial_ip = request.args.get('ip', '')
+    initial_port = request.args.get('port', '161')
+    initial_snmp_community = request.args.get('snmp_community', 'public')
+    return render_template("host_new.html", groups=groups, templates=templates,
+                           initial_hostname=initial_hostname,
+                           initial_ip=initial_ip,
+                           initial_port=initial_port,
+                           initial_snmp_community=initial_snmp_community)
 
 
 

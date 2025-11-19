@@ -40,16 +40,7 @@
     </div>
   </div>
 
-  <div class="col">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body text-center">
-        <h6 class="text-muted mb-1">
-          <i class="bi bi-exclamation-triangle-fill text-warning"></i> WARNING
-        </h6>
-        <h3 class="fw-bold text-warning">{{ hosts_warning or 0 }}</h3>
-      </div>
-    </div>
-  </div>
+  {# WARNING widget removed: we only show totals for Total / UP / DOWN / Inconnus #}
 
   <div class="col">
     <div class="card shadow-sm border-0 h-100">
@@ -58,6 +49,17 @@
           <i class="bi bi-question-circle-fill text-secondary"></i> Inconnus
         </h6>
         <h3 class="fw-bold text-secondary">{{ hosts_unknown }}</h3>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-1">
+          <i class="bi bi-bell-fill text-danger"></i> Alertes actives
+        </h6>
+        <h3 class="fw-bold text-danger">{{ alerts_count or 0 }}</h3>
       </div>
     </div>
   </div>
@@ -139,17 +141,13 @@
                   <span class="badge bg-success me-2">
                     <i class="bi bi-check-circle"></i> UP
                   </span>
-                {% elif h.status == 'warning' %}
-                  <span class="badge bg-warning text-dark me-2">
-                    <i class="bi bi-exclamation-triangle"></i> WARNING
-                  </span>
                 {% elif h.status == 'down' %}
                   <span class="badge bg-danger me-2">
                     <i class="bi bi-x-octagon"></i> DOWN
                   </span>
                 {% else %}
                   <span class="badge bg-secondary me-2">
-                    <i class="bi bi-question-circle"></i> Unknown
+                    <i class="bi bi-question-circle"></i> Inconnu
                   </span>
                 {% endif %}
 

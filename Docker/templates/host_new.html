@@ -12,26 +12,26 @@
   <div class="row g-3">
     <div class="col-md-6">
       <label class="form-label">Hostname *</label>
-      <input name="hostname" class="form-control" required />
+  <input name="hostname" class="form-control" required value="{{ initial_hostname|default('') }}" />
     </div>
     <div class="col-md-6">
       <label class="form-label">Adresse IP *</label>
-      <input name="ip" class="form-control" placeholder="192.168.1.10" required />
+  <input name="ip" class="form-control" placeholder="192.168.1.10" required value="{{ initial_ip|default('') }}" />
     </div>
 
     <div class="col-md-4">
       <label class="form-label">Port</label>
-      <input name="port" class="form-control" value="161" />
+  <input name="port" class="form-control" value="{{ initial_port|default('161') }}" />
     </div>
     <div class="col-md-8">
       <label class="form-label">Description</label>
-      <input name="description" class="form-control" />
+  <input name="description" class="form-control" />
     </div>
 
     <!-- Communauté SNMP -->
     <div class="col-md-6">
       <label class="form-label">Communauté SNMP *</label>
-      <input name="snmp_community" class="form-control" value="public" required />
+  <input name="snmp_community" class="form-control" value="{{ initial_snmp_community|default('public') }}" required />
     </div>
 
     <!-- Groupe / Type d’équipement -->

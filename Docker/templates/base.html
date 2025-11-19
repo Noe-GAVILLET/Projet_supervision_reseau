@@ -61,6 +61,8 @@
                 <li><a class="dropdown-item" href="{{ url_for('hosts_search') }}">🔍 Rechercher un device</a></li>
 
                 {% if session['role'] == 'admin' %}
+                <li><a class="dropdown-item" href="{{ url_for('devices_scanner') }}">🔎 Scanner le réseau</a></li>
+                <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{{ url_for('view_poller_log') }}">📡 Poller Logs</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('logs.logs_view') }}">🧾 SNMP Logs</a></li>
                 {% endif %}

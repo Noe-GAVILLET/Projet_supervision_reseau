@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold mb-0"><i class="bi bi-search"></i> Scanner le réseau (SNMP)</h4>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin') }}">Retour</a>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form id="scan-form" class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Plage réseau (ex: 192.168.1.0/24)</label>
+          <input type="text" id="network" name="network" class="form-control" required placeholder="192.168.1.0/24">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Communauté SNMP</label>
+          <input type="text" id="community" name="community" class="form-control" value="public">
+        </div>
+        <div class="col-md-2 d-grid align-self-end">
+          <button id="start-btn" type="submit" class="btn btn-primary">Lancer le scan</button>
+        </div>
+        <div class="col-md-2 d-grid align-self-end">
+          <button id="stop-btn" type="button" class="btn btn-outline-danger" disabled>Arrêter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="progress-area" class="mb-3" style="display:none;">
+    <div class="mb-2">Progression : <span id="progress-text">0 / 0</span></div>
+    <div class="progress">
+      <div id="progress-bar" class="progress-bar" role="progressbar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <h6>Équipements SNMP détectés</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover" id="results-table">
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>SysName / réponse</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('scan-form');
+  const resultsTable = document.querySelector('#results-table tbody');
+  const progressArea = document.getElementById('progress-area');
+  const progressBar = document.getElementById('progress-bar');
+  const progressText = document.getElementById('progress-text');
+  const startBtn = document.getElementById('start-btn');
+  const stopBtn = document.getElementById('stop-btn');
+
+  let evtSource = null;
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    resultsTable.innerHTML = '';
+    const network = document.getElementById('network').value.trim();
+    const community = document.getElementById('community').value.trim() || 'public';
+    if (!network) return alert('Entrez une plage réseau valide');
+
+    // open EventSource
+    const url = `/api/scan?network=${encodeURIComponent(network)}&community=${encodeURIComponent(community)}`;
+    evtSource = new EventSource(url);
+
+    progressArea.style.display = 'block';
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    evtSource.addEventListener('meta', e => {
+      const data = JSON.parse(e.data);
+      progressText.textContent = `0 / ${data.total}`;
+      progressBar.style.width = '0%';
+    });
+
+    evtSource.addEventListener('progress', e => {
+      const data = JSON.parse(e.data);
+      progressText.textContent = `${data.done} / ${data.total}`;
+      const pct = Math.round((data.done / data.total) * 100);
+      progressBar.style.width = pct + '%';
+    });
+
+    evtSource.addEventListener('device', e => {
+      const d = JSON.parse(e.data);
+      const tr = document.createElement('tr');
+      // link to the real host creation route (/hosts/new). Use form field names expected by the handler.
+      tr.innerHTML = `<td>${d.ip}</td><td>${d.sysname}</td><td><a class="btn btn-sm btn-outline-primary" href="/hosts/new?ip=${encodeURIComponent(d.ip)}&port=161&snmp_community=${encodeURIComponent(community)}&hostname=${encodeURIComponent(d.sysname)}">Ajouter</a></td>`;
+      resultsTable.appendChild(tr);
+    });
+
+    evtSource.addEventListener('done', e => {
+      const data = JSON.parse(e.data);
+      progressText.textContent = `${data.done} / ${data.total}`;
+      progressBar.style.width = '100%';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      if (evtSource) evtSource.close();
+    });
+
+    evtSource.addEventListener('error', e => {
+      console.error('SSE error', e);
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      if (evtSource) evtSource.close();
+    });
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (evtSource) {
+      evtSource.close();
+      evtSource = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+  });
+});
+</script>
+
+{% endblock %}
