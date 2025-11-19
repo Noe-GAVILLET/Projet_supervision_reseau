@@ -148,6 +148,7 @@
               <ul class="dropdown-menu">
 
                 <li><a class="dropdown-item" href="{{ url_for('admin') }}">Dashboard</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('localisation') }}">Localisation</a></li>
 
                 {% if session['role'] == 'admin' %}
                 <li><a class="dropdown-item" href="{{ url_for('host_new') }}">Ajouter un hôte</a></li>
@@ -197,6 +198,8 @@
                 {% endif %}
               </a>
             </li>
+
+            <!-- localisation moved into Overview dropdown -->
 
           </ul>
 
@@ -407,14 +410,13 @@
         } catch (e) { console.error(e); }
       }
 
-      // initialize (respect stored preference or system)
+      // initialize: respect stored preference; otherwise default to light
       try {
         const stored = localStorage.getItem(key);
         if (stored === 'dark' || stored === 'light') {
           applyTheme(stored);
-        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          applyTheme('dark');
         } else {
+          // default to light regardless of OS preference
           applyTheme('light');
         }
       } catch (e) { applyTheme('light'); }

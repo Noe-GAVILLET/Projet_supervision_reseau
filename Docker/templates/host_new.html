@@ -28,6 +28,8 @@
   <input name="description" class="form-control" />
     </div>
 
+    <!-- localisation fields moved below Tags -->
+
     <!-- Communauté SNMP -->
     <div class="col-md-6">
       <label class="form-label">Communauté SNMP *</label>
@@ -83,6 +85,19 @@
       <label class="form-label">Tags (séparés par des virgules)</label>
       <input name="tags" class="form-control" placeholder="prod, router, snmpv2" />
     </div>
+    <!-- Localisation (latitude / longitude) -->
+    <div class="col-md-6 mt-3">
+      <label class="form-label">Latitude</label>
+      <input name="latitude" id="latitude" class="form-control" placeholder="48.8566" />
+    </div>
+    <div class="col-md-6 mt-3">
+      <label class="form-label">Longitude</label>
+      <input name="longitude" id="longitude" class="form-control" placeholder="2.3522" />
+    </div>
+    <div class="col-12">
+      <button type="button" id="use-my-location" class="btn btn-outline-secondary btn-sm">Utiliser ma position</button>
+      <div class="form-text">Optionnel : renseignez la position GPS de l'équipement (pour la carte de localisation).</div>
+    </div>
   </div>
 
   <div class="mt-4">
@@ -95,6 +110,19 @@
 <script>
   const categoriesWithThresholds = ["cpu", "ram", "storage"];
   const container = document.getElementById("thresholds-container");
+
+  // Geolocation helper
+  document.getElementById('use-my-location')?.addEventListener('click', () => {
+    if (!navigator.geolocation) return alert('Géolocalisation non supportée par ce navigateur');
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
+      document.getElementById('latitude').value = lat;
+      document.getElementById('longitude').value = lon;
+    }, (err) => {
+      alert('Impossible de récupérer la position : ' + err.message);
+    }, { timeout: 10000 });
+  });
 
   function createThresholdBlock(cat) {
     const block = document.createElement("div");

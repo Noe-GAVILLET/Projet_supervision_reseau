@@ -612,6 +612,25 @@ def host_view(host_id: int):
     )
 
 
+@app.route('/localisation')
+@login_required
+def localisation():
+    # show map with hosts that have latitude and longitude
+    hosts = Host.query.filter(Host.latitude != None, Host.longitude != None).all()
+    # prepare simple payload
+    hosts_data = [
+        {
+            'id': h.id,
+            'hostname': h.hostname,
+            'lat': h.latitude,
+            'lon': h.longitude,
+            'ip': h.ip
+        }
+        for h in hosts
+    ]
+    return render_template('localisation.html', hosts=hosts_data)
+
+
 @app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
 @login_required
 def host_edit(host_id: int):
@@ -669,6 +688,16 @@ def host_edit(host_id: int):
         host.template_id = int(template_id) if template_id else None
         host.snmp_community = snmp_community or "public"
         host.snmp_categories = list(snmp_categories)
+
+        # Geolocation (optional)
+        try:
+            lat = request.form.get('latitude')
+            lon = request.form.get('longitude')
+            host.latitude = float(lat) if lat not in (None, '') else None
+            host.longitude = float(lon) if lon not in (None, '') else None
+        except Exception:
+            # keep existing values if parsing fails
+            pass
 
         # --- 🔹 Mise à jour des seuils personnalisés ---
         thresholds = {}
@@ -1283,6 +1312,16 @@ def host_new():
         # SNMP v2c
         host.snmp_community = snmp_community or "public"
         host.snmp_categories = snmp_categories or ["system"]
+
+        # Geolocation (optional)
+        try:
+            lat = request.form.get('latitude')
+            lon = request.form.get('longitude')
+            host.latitude = float(lat) if lat not in (None, '') else None
+            host.longitude = float(lon) if lon not in (None, '') else None
+        except Exception:
+            host.latitude = None
+            host.longitude = None
 
         # --- 🔹 Seuils personnalisés ---
         thresholds = {}

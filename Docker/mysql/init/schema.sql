@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   `snmp_community` VARCHAR(128) DEFAULT 'public',
   `snmp_categories` JSON DEFAULT NULL,  -- ex: ["system","cpu","storage","interfaces"]
   `thresholds` JSON DEFAULT NULL,  
+  `latitude` DOUBLE NULL,
+  `longitude` DOUBLE NULL,
   `group_id` INT UNSIGNED DEFAULT NULL,
   `template_id` INT UNSIGNED DEFAULT NULL,
   `status` ENUM('up','down','warning','unknown') NOT NULL DEFAULT 'unknown',
