@@ -1,4 +1,5 @@
 import os
+import time
 import csv
 import re
 import ipaddress
@@ -32,17 +33,49 @@ from zoneinfo import ZoneInfo
 
 os.makedirs("logs", exist_ok=True)
 log_file = "logs/supervision.log"
+# Remove old rotated logs if present (we'll use a single file)
+for old in ("logs/supervision.log.1", "logs/supervision.log.2", "logs/supervision.log.3"):
+    try:
+        if os.path.exists(old):
+            os.remove(old)
+    except Exception:
+        pass
 log_formatter = logging.Formatter(
     "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
+# Force les timestamps du logger en Europe/Paris (plutôt qu'UTC)
+def _paris_time(timestamp):
+    try:
+        # datetime.fromtimestamp with ZoneInfo and then to timetuple expected by logging.Formatter
+        from zoneinfo import ZoneInfo
+        return datetime.fromtimestamp(timestamp, ZoneInfo("Europe/Paris")).timetuple()
+    except Exception:
+        return time.localtime(timestamp)
+log_formatter.converter = _paris_time
 
 # --- 1️⃣ Fichier principal supervision.log ---
-supervision_handler = RotatingFileHandler(
-    "logs/supervision.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
-)
+# Use a simple FileHandler (no rotation) and filter to only keep poller / alert lines
+from logging import FileHandler
+
+class PollerAlertsFilter(logging.Filter):
+    """Allow only records from poller logger or containing 'alerte' or from werkzeug."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            name = (record.name or "").lower()
+            msg = (record.getMessage() or "").lower()
+            if "poller" in name:
+                return True
+            if "alerte" in msg or "alert" in msg:
+                return True
+            return False
+        except Exception:
+            return False
+
+supervision_handler = FileHandler(log_file, encoding="utf-8")
 supervision_handler.setFormatter(log_formatter)
 supervision_handler.setLevel(logging.INFO)
+supervision_handler.addFilter(PollerAlertsFilter())
 
 # --- 2️⃣ Sortie console ---
 console_handler = logging.StreamHandler()
@@ -55,7 +88,9 @@ logging.basicConfig(level=logging.INFO, handlers=[supervision_handler, console_h
 # --- 3️⃣ Logger Flask/Werkzeug ---
 flask_logger = logging.getLogger('werkzeug')
 flask_logger.addHandler(supervision_handler)
-flask_logger.addHandler(console_handler)
+# Avoid adding the console handler twice (it is already attached to root via basicConfig)
+# Removing console_handler here prevents duplicated console output from werkzeug.
+# Keep propagation enabled so werkzeug logs still appear on the console via the root logger.
 
 # ----------------------------------------------------------------------------- 
 # Config Flask + DB 
