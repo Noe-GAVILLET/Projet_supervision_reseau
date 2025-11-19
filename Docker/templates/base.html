@@ -85,6 +85,39 @@
       html[data-bs-theme="dark"] .table tbody tr.filtered-highlight {
         background-color: rgba(0, 140, 200, 0.06) !important;
       }
+      
+      /* Force visible separators for table cells (horizontal + vertical)
+         Use `border-collapse: separate` + targeted borders between adjacent
+         cells/rows so we draw inner grid lines without adding outer frame. */
+      .table { border-collapse: separate; border-spacing: 0; }
+
+      /* Clear any conflicting cell borders coming from other styles */
+      .table th, .table td { border: none !important; }
+
+      /* Horizontal separators: add a top border on every row except the first */
+      .table tbody tr + tr > td, .table tbody tr + tr > th {
+        border-top: 1px solid rgba(0,0,0,0.08) !important;
+      }
+
+      /* Header bottom line */
+      .table thead tr > th {
+        border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+      }
+
+      /* Dark theme equivalents for header and row separators */
+      html[data-bs-theme="dark"] .table tbody tr + tr > td,
+      html[data-bs-theme="dark"] .table tbody tr + tr > th,
+      html[data-bs-theme="dark"] .table thead tr > th {
+        border-color: rgba(255,255,255,0.06) !important;
+      }
+
+      /* Ensure bottom border for the last row so table has a closing line */
+      .table tbody tr:last-child > td, .table tbody tr:last-child > th {
+        border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+      }
+      html[data-bs-theme="dark"] .table tbody tr:last-child > td, html[data-bs-theme="dark"] .table tbody tr:last-child > th {
+        border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      }
     </style>
   </head>
 
