@@ -3,7 +3,7 @@ import threading
 import json
 from datetime import datetime
 from snmp_utils import get_metrics
-from db_utils import upsert_current_metric, open_alert, resolve_alert
+from db_utils import upsert_current_metric, open_alert, resolve_alert, resolve_snmp_alerts
 from seuils import check_host_reachability, detect_interface_changes, check_thresholds
 from models import CurrentMetric, Measurement, Alert
 import logging
@@ -76,11 +76,18 @@ def poll_host_metrics(app, db, Host, Alert):
                 ping_ok = False
 
             # 2️⃣ SNMP
-            snmp_ok = True
-            if ping_ok and categories:
+            # Tentative SNMP indépendante du ping : on considère SNMP OK si au moins
+            # une catégorie renvoie des données valides. Si l'hôte n'a pas de
+            # catégories SNMP configurées, on considère SNMP OK (rien à collecter).
+            snmp_ok = True if not categories else False
+            if categories:
                 for cat in categories:
                     try:
                         data = get_metrics(host.ip, host.snmp_community, host.port, cat)
+                        # Si on obtient des données, marque SNMP comme OK
+                        if data:
+                            snmp_ok = True
+
                         if cat == "interfaces":
                             detect_interface_changes(db, host.id, data, Alert)
 
@@ -109,31 +116,53 @@ def poll_host_metrics(app, db, Host, Alert):
                                     meta=cat
                                 ))
 
-                    except Exception:
-                        snmp_ok = False
-                        break  # un seul échec SNMP → on arrête les autres catégories
+                    except Exception as e:
+                        # ne pas breaker : tenter les autres catégories — une seule
+                        # catégorie réussie suffit pour considérer SNMP OK
+                        log_poller("⚠️", f"{hostname} ({cat}) SNMP erreur: {e}")
+                        continue
 
             # 3️⃣ Statut global simplifié
-            new_status = "down" if (not ping_ok or not snmp_ok) else "up"
-            if not host.last_status_change:
-                host.last_status_change = datetime.utcnow()
-
-            # Si des alertes non résolues de type warning/critical existent pour cet hôte,
-            # elles doivent avoir la priorité sur 'up'. Ordre de priorité : down > warning > up.
+            # Déterminer le statut en se basant sur SNMP (down si SNMP KO).
+            # Si SNMP OK, vérifier s'il existe des alertes warning/critical non résolues
+            # pour promouvoir en 'warning'.
+            log_poller("🔍", f"host={hostname} ping_ok={ping_ok} snmp_ok={snmp_ok} prev={previous_status}")
             try:
-                if new_status != "down":
+                if snmp_ok:
+                    # Si SNMP est joignable, tenter de résoudre toute alerte SNMP en attente
+                    try:
+                        resolve_snmp_alerts(db, Alert, host_id, force=True)
+                    except Exception as e:
+                        log_poller("⚠️", f"Erreur lors de tentative de résolution SNMP pour {hostname}: {e}")
+
                     active_problem = Alert.query.filter(
                         Alert.host_id == host.id,
                         Alert.resolved_at.is_(None),
                         Alert.severity.in_(["warning", "critical"])
                     ).count()
-                    if active_problem and active_problem > 0:
-                        new_status = "warning"
+                    new_status = "warning" if active_problem and active_problem > 0 else "up"
+                else:
+                    # SNMP KO → host down
+                    active_problem = Alert.query.filter(
+                        Alert.host_id == host.id,
+                        Alert.resolved_at.is_(None),
+                        Alert.severity.in_(["warning", "critical"])
+                    ).count()
+                    new_status = "down"
             except Exception as e:
                 log_poller("⚠️", f"Erreur lecture alertes pour host {hostname}: {e}")
+                # En cas d'erreur, conserver le statut précédent
+                new_status = previous_status
+            if not host.last_status_change:
+                host.last_status_change = datetime.utcnow()
+
+            # Si des alertes non résolues de type warning/critical existent pour cet hôte,
+            # elles doivent avoir la priorité sur 'up'. Ordre de priorité : down > warning > up.
+            # (active_problem is set above)
 
             # 4️⃣ Changement d’état
             if new_status != previous_status:
+                log_poller("ℹ️", f"host={hostname} status change {previous_status} -> {new_status} (snmp_ok={snmp_ok} active_problem={active_problem})")
                 HOST_STATUS_CACHE[host_id] = new_status
                 host.status = new_status
 
@@ -149,7 +178,11 @@ def poll_host_metrics(app, db, Host, Alert):
 
                 elif new_status == "up":
                     # Force immediate resolution for SNMP reachability alerts
-                    resolve_alert(db, Alert, host_id, category="SNMP", message_contains="injoignable", force=True)
+                    # Résolution robuste des alertes SNMP : utilise la fonction dédiée
+                    try:
+                        resolve_snmp_alerts(db, Alert, host_id, force=True)
+                    except Exception as e:
+                        log_poller("⚠️", f"Erreur lors de la résolution d'alertes SNMP pour {hostname}: {e}")
 
                     # 🔹 Cas 1 : Unknown → Up → première connexion, pas de mail
                     if previous_status == "unknown":
@@ -170,18 +203,27 @@ def poll_host_metrics(app, db, Host, Alert):
                         log_poller("✅", f"Host {hostname} back UP [{host.ip}]")
 
 
-            # 5️⃣ Résumé final par hôte
+            # 5️⃣ Résumé final par hôte (traiter explicitement 'warning')
             if new_status == "up":
                 log_poller("✅", f"Metrics updated for {hostname} [{host.ip}]")
+            elif new_status == "warning":
+                log_poller("⚠️", f"Host {hostname} WARNING — métriques partiellement dégradées [{host.ip}]")
             else:
                 log_poller("❌", f"Host {hostname} DOWN — métriques non mises à jour")
 
             db.session.commit()
 
-        # Résumé global
-        up = sum(1 for s in HOST_STATUS_CACHE.values() if s == "up")
-        down = sum(1 for s in HOST_STATUS_CACHE.values() if s == "down")
-        log_poller("📊", f"Scan terminé — {up} UP, {down} DOWN")
+    # Résumé global
+    up = sum(1 for s in HOST_STATUS_CACHE.values() if s == "up")
+    warning = sum(1 for s in HOST_STATUS_CACHE.values() if s == "warning")
+    down = sum(1 for s in HOST_STATUS_CACHE.values() if s == "down")
+    log_poller("📊", f"Scan terminé — {up} UP, {warning} WARNING, {down} DOWN")
+    # Dump du cache complet pour debug
+    try:
+        cache_snapshot = ", ".join(f"{k}:{v}" for k, v in HOST_STATUS_CACHE.items())
+        log_poller("📚", f"HOST_STATUS_CACHE: {cache_snapshot}")
+    except Exception:
+        pass
 
 
 # ==============================================================
