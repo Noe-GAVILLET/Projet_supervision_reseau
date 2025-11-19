@@ -118,6 +118,20 @@ def poll_host_metrics(app, db, Host, Alert):
             if not host.last_status_change:
                 host.last_status_change = datetime.utcnow()
 
+            # Si des alertes non résolues de type warning/critical existent pour cet hôte,
+            # elles doivent avoir la priorité sur 'up'. Ordre de priorité : down > warning > up.
+            try:
+                if new_status != "down":
+                    active_problem = Alert.query.filter(
+                        Alert.host_id == host.id,
+                        Alert.resolved_at.is_(None),
+                        Alert.severity.in_(["warning", "critical"])
+                    ).count()
+                    if active_problem and active_problem > 0:
+                        new_status = "warning"
+            except Exception as e:
+                log_poller("⚠️", f"Erreur lecture alertes pour host {hostname}: {e}")
+
             # 4️⃣ Changement d’état
             if new_status != previous_status:
                 HOST_STATUS_CACHE[host_id] = new_status
@@ -134,7 +148,8 @@ def poll_host_metrics(app, db, Host, Alert):
                     log_poller("❌", f"{hostname} DOWN (ping ou SNMP KO) [{host.ip}]")
 
                 elif new_status == "up":
-                    resolve_alert(db, Alert, host_id, category="SNMP", message_contains="injoignable")
+                    # Force immediate resolution for SNMP reachability alerts
+                    resolve_alert(db, Alert, host_id, category="SNMP", message_contains="injoignable", force=True)
 
                     # 🔹 Cas 1 : Unknown → Up → première connexion, pas de mail
                     if previous_status == "unknown":

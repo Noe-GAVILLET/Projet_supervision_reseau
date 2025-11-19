@@ -28,6 +28,17 @@
       </div>
     </div>
   </div>
+  <!-- WARNING card inserted between UP and DOWN -->
+  <div class="col">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-1">
+          <i class="bi bi-exclamation-triangle-fill text-warning"></i> Warning
+        </h6>
+        <h3 class="fw-bold text-warning">{{ hosts_warning }}</h3>
+      </div>
+    </div>
+  </div>
 
   <div class="col">
     <div class="card shadow-sm border-0 h-100">
@@ -40,8 +51,6 @@
     </div>
   </div>
 
-  {# WARNING widget removed: we only show totals for Total / UP / DOWN / Inconnus #}
-
   <div class="col">
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body text-center">
@@ -49,17 +58,6 @@
           <i class="bi bi-question-circle-fill text-secondary"></i> Inconnus
         </h6>
         <h3 class="fw-bold text-secondary">{{ hosts_unknown }}</h3>
-      </div>
-    </div>
-  </div>
-
-  <div class="col">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body text-center">
-        <h6 class="text-muted mb-1">
-          <i class="bi bi-bell-fill text-danger"></i> Alertes actives
-        </h6>
-        <h3 class="fw-bold text-danger">{{ alerts_count or 0 }}</h3>
       </div>
     </div>
   </div>
@@ -137,13 +135,18 @@
               </td>
 
               <td class="align-middle">
-                {% if h.status == 'up' %}
-                  <span class="badge bg-success me-2">
-                    <i class="bi bi-check-circle"></i> UP
-                  </span>
-                {% elif h.status == 'down' %}
+                {# Afficher le statut à partir de la colonne `h.status` (BDD) uniquement #}
+                {% if h.status == 'down' %}
                   <span class="badge bg-danger me-2">
                     <i class="bi bi-x-octagon"></i> DOWN
+                  </span>
+                {% elif h.status == 'warning' %}
+                  <span class="badge bg-warning text-dark me-2">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Warning
+                  </span>
+                {% elif h.status == 'up' %}
+                  <span class="badge bg-success me-2">
+                    <i class="bi bi-check-circle"></i> UP
                   </span>
                 {% else %}
                   <span class="badge bg-secondary me-2">

@@ -189,7 +189,28 @@
     let lastAlertId = 0;
     window.activeToasts = [];
 
+    function getDismissedAlerts() {
+      try {
+        const raw = localStorage.getItem('dismissed_alerts');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) { return []; }
+    }
+
+    function persistDismissedAlert(id) {
+      try {
+        const list = getDismissedAlerts();
+        if (!list.includes(id)) {
+          list.push(id);
+          localStorage.setItem('dismissed_alerts', JSON.stringify(list));
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     function showToast(alert) {
+      // don't show if user dismissed this alert before
+      const dismissed = getDismissedAlerts();
+      if (dismissed.includes(alert.id)) return;
+
       const colorMap = {
         info: "bg-info text-dark",
         warning: "bg-warning text-dark",
@@ -197,7 +218,7 @@
       };
       const colorClass = colorMap[alert.severity] || "bg-secondary text-white";
 
-      const toastId = `${alert.host}_${alert.message}`;
+      const toastId = `alert_${alert.id}`;
       if (window.activeToasts.includes(toastId)) return;
       window.activeToasts.push(toastId);
 
@@ -221,6 +242,8 @@
 
       toast.addEventListener("hidden.bs.toast", () => {
         window.activeToasts = window.activeToasts.filter(id => id !== toastId);
+        // persist dismissal so the toast doesn't reappear later
+        persistDismissedAlert(alert.id);
         toast.remove();
       });
     }
@@ -229,7 +252,9 @@
       fetch("/api/alerts/latest")
         .then(r => r.json())
         .then(alerts => {
+          const dismissed = getDismissedAlerts();
           alerts.forEach(a => {
+            if (dismissed.includes(a.id)) return;
             if (a.id > lastAlertId) {
               lastAlertId = a.id;
               showToast(a);

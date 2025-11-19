@@ -150,6 +150,15 @@ def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
                     f"Détails : {message}\n"
                 )
                 send_alert_email(subject, body)
+            # Mettre à jour le statut de l'hôte si nécessaire (sauf si déjà DOWN)
+            try:
+                if host and getattr(host, 'status', None) != 'down' and severity in ('warning', 'critical'):
+                    host.status = 'warning'
+                    host.last_status_change = now
+                    db.session.add(host)
+                    db.session.commit()
+            except Exception:
+                logger.exception("Erreur lors de la mise à jour du statut d'hôte après mise à jour d'alerte")
             return existing_unresolved
         except Exception as e:
             logger.exception(f"[alerte] Erreur mise à jour alerte existante: {e}")
@@ -175,6 +184,15 @@ def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
             last_similar.resolved_at = None
             db.session.add(last_similar)
             db.session.commit()
+            # Mettre à jour le statut de l'hôte si nécessaire (sauf si déjà DOWN)
+            try:
+                if host and getattr(host, 'status', None) != 'down' and severity in ('warning', 'critical'):
+                    host.status = 'warning'
+                    host.last_status_change = now
+                    db.session.add(host)
+                    db.session.commit()
+            except Exception:
+                logger.exception("Erreur lors de la mise à jour du statut d'hôte après réouverture d'alerte")
             return last_similar
         except Exception as e:
             logger.exception(f"[alerte] Erreur lors de la réutilisation d'une alerte existante: {e}")
@@ -203,18 +221,34 @@ def open_alert(db, Alert, host_id, severity, message, cooldown_minutes=10):
         )
         send_alert_email(subject, body)
 
+    # Mettre à jour le statut d'hôte : si l'hôte n'est pas DOWN, le passer en WARNING
+    try:
+        if host and getattr(host, 'status', None) != 'down' and severity in ('warning', 'critical'):
+            host.status = 'warning'
+            host.last_status_change = now
+            db.session.add(host)
+            db.session.commit()
+    except Exception:
+        logger.exception("Erreur lors de la mise à jour du statut d'hôte après création d'alerte")
+
     return alert
 
 
-def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
+def resolve_alert(db, Alert, host_id, category=None, message_contains=None, min_age_seconds=5, force=False):
     """
     Marque comme résolues les alertes ouvertes pour ce host (optionnellement filtrées),
     puis envoie un e-mail de rétablissement uniquement si une alerte critique était concernée.
+
+    Pour éviter les bascules immédiates (alerte ouverte puis résolue dans la même passe),
+    la fonction ignore par défaut les alertes créées il y a moins de `min_age_seconds`.
+    Passe `force=True` pour forcer la résolution immédiate.
     """
     from models import Host
     host = Host.query.get(host_id)
     hostname = host.hostname if host else f"Host#{host_id}"
     host_ip = host.ip if host else "IP inconnue"
+
+    now = datetime.utcnow()
 
     q = Alert.query.filter(
         Alert.host_id == host_id,
@@ -223,15 +257,20 @@ def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
     if message_contains:
         q = q.filter(Alert.message.like(f"%{message_contains}%"))
 
+    # Exclure les alertes très récentes pour éviter de résoudre une alerte qui vient d'être créée
+    if not force and min_age_seconds and min_age_seconds > 0:
+        cutoff = now - timedelta(seconds=min_age_seconds)
+        q = q.filter(Alert.created_at <= cutoff)
+
     alerts = q.all()
     if not alerts:
         return
 
-    now = datetime.utcnow()
+    resolved_time = datetime.utcnow()
     severities = {a.severity for a in alerts}
 
     for a in alerts:
-        a.resolved_at = now
+        a.resolved_at = resolved_time
         db.session.add(a)
     db.session.commit()
 
@@ -247,8 +286,17 @@ def resolve_alert(db, Alert, host_id, category=None, message_contains=None):
             f"Hôte : {hostname} ({host_ip})\n"
             f"{cat_line}"
             f"{details}\n\n"
-            f"Rétablissement : {now} UTC"
+            f"Rétablissement : {resolved_time} UTC"
         )
         send_alert_email(subject, body)
 
-    print(f"[alerte] ✅ {len(alerts)} alerte(s) résolue(s) pour host {host_id}")
+    # Si aucune alerte non résolue ne reste pour cet hôte, remettre le statut à 'up'
+    try:
+        remaining = Alert.query.filter(Alert.host_id == host_id, Alert.resolved_at.is_(None)).count()
+        if remaining == 0 and host:
+            host.status = 'up'
+            host.last_status_change = resolved_time
+            db.session.add(host)
+            db.session.commit()
+    except Exception:
+        logger.exception("Erreur lors de la remise à jour du statut d'hôte après résolution d'alertes")
