@@ -8,7 +8,7 @@
   ======================== -->
  <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-5 g-4 mb-4">
   <div class="col">
-    <div class="card shadow-sm border-0 h-100">
+    <div class="card shadow-sm border-0 h-100 clickable-card" data-status="all" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
           <i class="bi bi-hdd-network text-primary"></i> Total hôtes
@@ -19,7 +19,7 @@
   </div>
 
   <div class="col">
-    <div class="card shadow-sm border-0 h-100">
+    <div class="card shadow-sm border-0 h-100 clickable-card" data-status="up" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
           <i class="bi bi-check-circle-fill text-success"></i> UP
@@ -30,7 +30,7 @@
   </div>
   <!-- WARNING card inserted between UP and DOWN -->
   <div class="col">
-    <div class="card shadow-sm border-0 h-100">
+    <div class="card shadow-sm border-0 h-100 clickable-card" data-status="warning" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
           <i class="bi bi-exclamation-triangle-fill text-warning"></i> Warning
@@ -41,7 +41,7 @@
   </div>
 
   <div class="col">
-    <div class="card shadow-sm border-0 h-100">
+    <div class="card shadow-sm border-0 h-100 clickable-card" data-status="down" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
           <i class="bi bi-x-octagon-fill text-danger"></i> DOWN
@@ -52,7 +52,7 @@
   </div>
 
   <div class="col">
-    <div class="card shadow-sm border-0 h-100">
+    <div class="card shadow-sm border-0 h-100 clickable-card" data-status="unknown" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
           <i class="bi bi-question-circle-fill text-secondary"></i> Inconnus
@@ -109,7 +109,7 @@
 
           <tbody>
             {% for h in hosts %}
-            <tr>
+            <tr data-status="{{ h.status or 'unknown' }}">
               <td>{{ h.hostname }}</td>
               <td>{{ h.ip }}:{{ h.port }}</td>
               <td>{{ h.group.name if h.group else "-" }}</td>
@@ -275,6 +275,111 @@ document.addEventListener('DOMContentLoaded', function () {
     unitSelect.value = defaultUnit;
     updateAll();
   })();
+});
+</script>
+
+<script>
+// Dashboard summary cards -> filter table by status
+document.addEventListener('DOMContentLoaded', function () {
+  const cards = Array.from(document.querySelectorAll('.card.clickable-card[data-status]'));
+  if (!cards.length) return;
+  const key = 'hosts_status_filter';
+
+  function clearActive() { cards.forEach(c => c.classList.remove('active-card')); }
+
+  function applyFilter(status) {
+    const tbody = document.querySelector('table tbody');
+    if (!tbody) return;
+    // ensure original index exists for stable sorting
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
+    allRows.forEach((tr, idx) => {
+      if (!('originalIndex' in tr.dataset)) tr.dataset.originalIndex = idx;
+    });
+
+    // special-case 'all' -> restore original order and clear highlights
+    if (status === 'all') {
+      const sorted = allRows.slice().sort((a,b) => parseInt(a.dataset.originalIndex) - parseInt(b.dataset.originalIndex));
+      sorted.forEach(tr => {
+        // ensure any pending hide timeout is cleared and row is visible
+        if (tr.dataset.hideTimeout) {
+          try { clearTimeout(tr.dataset.hideTimeout); } catch (e) {}
+          delete tr.dataset.hideTimeout;
+        }
+        tr.style.display = '';
+        tr.classList.remove('filtered-highlight');
+        tr.classList.remove('filtered-out');
+        tbody.appendChild(tr);
+      });
+
+      clearActive();
+      const activeCard = cards.find(c => c.dataset.status === 'all');
+      if (activeCard) activeCard.classList.add('active-card');
+      try { localStorage.setItem(key, 'all'); } catch (e) {}
+      return;
+    }
+
+    // Partition rows into matched and others, preserving original order
+    const matched = [];
+    const others = [];
+    allRows.forEach(tr => {
+      const s = (tr.dataset.status || 'unknown').toLowerCase();
+      let isMatch = false;
+      if (status === 'unknown') isMatch = !['up','warning','down'].includes(s);
+      else isMatch = s === status;
+      if (isMatch) matched.push(tr);
+      else others.push(tr);
+    });
+
+    matched.sort((a,b) => parseInt(a.dataset.originalIndex) - parseInt(b.dataset.originalIndex));
+    others.sort((a,b) => parseInt(a.dataset.originalIndex) - parseInt(b.dataset.originalIndex));
+
+    // Re-append: matched first (highlight), then others (normal)
+    matched.forEach(tr => {
+      // ensure visible
+      if (tr.dataset.hideTimeout) {
+        clearTimeout(tr.dataset.hideTimeout);
+        delete tr.dataset.hideTimeout;
+      }
+      tr.style.display = '';
+      tr.classList.remove('filtered-out');
+      tr.classList.add('filtered-highlight');
+      tbody.appendChild(tr);
+    });
+
+    others.forEach(tr => {
+      tr.classList.remove('filtered-highlight');
+      // trigger fade-out then hide completely
+      tr.classList.add('filtered-out');
+      tbody.appendChild(tr);
+      // clear any existing timeout
+      if (tr.dataset.hideTimeout) { clearTimeout(tr.dataset.hideTimeout); }
+      // after the CSS transition, set display none to remove from flow
+      const to = setTimeout(() => {
+        tr.style.display = 'none';
+        delete tr.dataset.hideTimeout;
+      }, 260);
+      tr.dataset.hideTimeout = to;
+    });
+
+    // Set active state on cards
+    clearActive();
+    const activeCard = cards.find(c => c.dataset.status === status);
+    if (activeCard) activeCard.classList.add('active-card');
+
+    // store
+    try { localStorage.setItem(key, status); } catch (e) {}
+  }
+
+  // restore from storage or default to all
+  try {
+    const stored = localStorage.getItem(key) || 'all';
+    applyFilter(stored);
+  } catch (e) { applyFilter('all'); }
+
+  cards.forEach(c => {
+    c.addEventListener('click', () => applyFilter(c.dataset.status));
+    c.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyFilter(c.dataset.status); } });
+  });
 });
 </script>
 

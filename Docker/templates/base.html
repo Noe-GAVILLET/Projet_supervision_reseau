@@ -7,7 +7,11 @@
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <!-- Icons early to avoid FOUC -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
     <style>
+      /* Minor visual improvements for the navbar and theme toggle */
       .navbar-brand { font-weight: 600; }
       .badge-alert {
         position: absolute;
@@ -15,13 +19,79 @@
         right: 4px;
         font-size: 0.65rem;
       }
+
+      /* Smooth color transition when switching theme */
+      html.theme-transition, body.theme-transition {
+        transition: background-color .25s ease, color .25s ease;
+      }
+
+      /* Theme toggle button: circular icon with subtle hover */
+      .theme-toggle-btn {
+        width: 42px;
+        height: 34px;
+        padding: 6px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color .18s ease, transform .12s ease;
+      }
+      .theme-toggle-btn:focus { outline: 0; box-shadow: 0 0 0 3px rgba(100,120,200,0.12); }
+      .theme-toggle-btn:hover { transform: translateY(-1px); }
+
+      /* Slightly offset toasts from the top-right corner so they don't touch the navbar */
+      .toast.position-fixed.top-0.end-0 { top: 4.5rem !important; }
+
+      /* Make table headers blend with the page theme (avoid bright white strip) */
+      .table thead th {
+        background-color: rgba(0,0,0,0.04);
+        color: inherit;
+        border-bottom: 1px solid rgba(0,0,0,0.08);
+      }
+
+      /* Dark theme: softer, near-transparent header */
+      html[data-bs-theme="dark"] .table thead th {
+        background-color: rgba(255,255,255,0.03) !important;
+        color: var(--bs-body-color) !important;
+        border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      }
+
+      /* Make card headers that use .bg-light (e.g. the "Liste des hôtes supervisés" header)
+         render dark instead of bright white when the dark theme is active. */
+      html[data-bs-theme="dark"] .card .bg-light {
+        background-color: rgba(0,0,0,0.45) !important;
+        color: var(--bs-body-color) !important;
+      }
+
+      /* Adjust border-bottom color for dark theme */
+      html[data-bs-theme="dark"] .card .border-bottom {
+        border-color: rgba(255,255,255,0.06) !important;
+      }
+
+      /* Clickable card (used on admin dashboard summary cards) */
+      .card.clickable-card { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+      .card.clickable-card:focus, .card.clickable-card:hover { transform: translateY(-3px); }
+      .card.clickable-card.active-card { box-shadow: 0 6px 18px rgba(0,0,0,0.12); border: 1px solid rgba(0,0,0,0.06); }
+
+      /* Row fade animation for filtering (opacity + translate) */
+      .table tbody tr { transition: opacity .22s ease, transform .18s ease; will-change: opacity, transform; }
+      .table tbody tr.filtered-out { opacity: 0.06; transform: translateY(-6px) scaleY(0.998); pointer-events: none; }
+
+      /* Highlight for matched rows after reordering */
+      .table tbody tr.filtered-highlight {
+        transition: background-color .25s ease;
+        background-color: rgba(64, 196, 255, 0.06);
+      }
+      html[data-bs-theme="dark"] .table tbody tr.filtered-highlight {
+        background-color: rgba(0, 140, 200, 0.06) !important;
+      }
     </style>
   </head>
 
   <body>
 
     <!-- ======== NAVBAR (toujours affichée) ======== -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom shadow-sm">
+  <nav class="navbar navbar-expand-lg border-bottom shadow-sm">
       <div class="container-fluid">
 
         <!-- Titre -->
@@ -99,6 +169,13 @@
 
           <!-- Menu droite -->
           <ul class="navbar-nav ms-auto">
+            <li class="nav-item d-flex align-items-center me-2">
+              <!-- Theme toggle (accessible + aesthetic) -->
+              <button id="themeToggle" class="btn btn-outline-secondary btn-sm theme-toggle-btn" aria-pressed="false" title="Basculer thème" aria-label="Basculer thème">
+                <i id="themeIcon" class="bi bi-moon" aria-hidden="true"></i>
+                <span class="visually-hidden">Basculer thème</span>
+              </button>
+            </li>
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                 <i class="bi bi-person-circle"></i> {{ session['username'] }}
@@ -265,8 +342,62 @@
     }, 10000);
     </script>
 
-    <!-- Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script>
+    // Improved theme toggle: stores 'theme_pref' in localStorage ('light' or 'dark'), applies transitions
+    (function(){
+      const key = 'theme_pref';
+      const icon = document.getElementById('themeIcon');
+      const btn = document.getElementById('themeToggle');
+
+      function setTransitionHint() {
+        document.documentElement.classList.add('theme-transition');
+        document.body.classList.add('theme-transition');
+        window.setTimeout(() => {
+          document.documentElement.classList.remove('theme-transition');
+          document.body.classList.remove('theme-transition');
+        }, 300);
+      }
+
+      function applyTheme(t) {
+        try {
+          setTransitionHint();
+          document.documentElement.setAttribute('data-bs-theme', t);
+          if (icon) {
+            // show the icon of the *other* theme (action available)
+            icon.className = t === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon';
+          }
+          if (btn) {
+            const pressed = t === 'dark';
+            btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+            btn.title = pressed ? 'Passer en clair' : 'Passer en sombre';
+          }
+        } catch (e) { console.error(e); }
+      }
+
+      // initialize (respect stored preference or system)
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored === 'dark' || stored === 'light') {
+          applyTheme(stored);
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          applyTheme('dark');
+        } else {
+          applyTheme('light');
+        }
+      } catch (e) { applyTheme('light'); }
+
+      if (btn) {
+        btn.addEventListener('click', function(){
+          try {
+            const cur = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            const next = cur === 'dark' ? 'light' : 'dark';
+            localStorage.setItem(key, next);
+            applyTheme(next);
+          } catch (e) { console.error(e); }
+        });
+      }
+    })();
+  </script>
 
   </body>
 </html>
