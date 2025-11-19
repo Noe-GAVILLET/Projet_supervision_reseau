@@ -272,6 +272,18 @@ document.addEventListener("DOMContentLoaded", function () {
   const timeSelect = document.getElementById("time-range");
   const charts = {}; // 🔹 Stocke les instances Chart.js
 
+  // Persist selected time-range per host so auto-refresh doesn't reset it
+  try {
+    const timeKey = `host_time_range_${hostId}`;
+    if (timeSelect) {
+      const stored = localStorage.getItem(timeKey);
+      if (stored) timeSelect.value = stored;
+      timeSelect.addEventListener('change', () => {
+        try { localStorage.setItem(timeKey, timeSelect.value); } catch (e) {}
+      });
+    }
+  } catch (e) { /* ignore storage errors */ }
+
   // 🔹 Convertit "10m" / "1h" / "24h" / "7d" en minutes
   function getMinutes() {
     const val = timeSelect.value;

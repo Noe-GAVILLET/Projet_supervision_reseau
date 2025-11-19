@@ -196,6 +196,18 @@ document.addEventListener('DOMContentLoaded', function () {
   const charts = {};
   const timeSelect = document.getElementById('time-range');
 
+  // Persist selected time-range per category so auto-refresh keeps user's choice
+  try {
+    const timeKey = `category_time_range_{{ category }}`;
+    if (timeSelect) {
+      const stored = localStorage.getItem(timeKey);
+      if (stored) timeSelect.value = stored;
+      timeSelect.addEventListener('change', () => {
+        try { localStorage.setItem(timeKey, timeSelect.value); } catch (e) {}
+      });
+    }
+  } catch (e) { /* ignore */ }
+
   function getMinutes() {
     const val = timeSelect ? timeSelect.value : '10m';
     if (val.endsWith('m')) return parseInt(val);
