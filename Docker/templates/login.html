@@ -1,25 +1,93 @@
 <!-- templates/login.html -->
 {% extends "base.html" %}
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-12 col-md-5">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <h5 class="card-title mb-3">Connexion</h5>
+<style>
+  .login-container {
+    min-height: calc(100vh - 200px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-card {
+    border-radius: 12px;
+    border: none;
+  }
+  .login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  .login-header h4 {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+  }
+  .login-header p {
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+  .form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+  }
+  .form-control-lg::placeholder {
+    font-size: 0.95rem;
+    color: #adb5bd;
+  }
+  .login-btn {
+    padding: 0.75rem;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+  }
+</style>
+
+<div class="login-container">
+  <div class="col-11 col-sm-8 col-md-5 col-lg-4">
+    <div class="card shadow-lg login-card">
+      <div class="card-body p-4 p-md-5">
+        <div class="login-header">
+          <i class="fa fa-shield-alt fa-3x text-primary mb-3"></i>
+          <h4>Système de Supervision</h4>          
+        </div>
+        
         <form method="post">
-          <div class="mb-3">
-            <label class="form-label">Utilisateur</label>
-            <input name="username" class="form-control" autocomplete="username" required />
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-user me-2 text-muted"></i>Utilisateur
+            </label>
+            <input 
+              name="username" 
+              class="form-control form-control-lg" 
+              autocomplete="username" 
+              placeholder="Entrez votre nom d'utilisateur"
+              required 
+            />
           </div>
-          <div class="mb-3">
-            <label class="form-label">Mot de passe</label>
-            <input type="password" name="password" class="form-control" autocomplete="current-password" required />
+          
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-lock me-2 text-muted"></i>Mot de passe
+            </label>
+            <input 
+              type="password" 
+              name="password" 
+              class="form-control form-control-lg" 
+              autocomplete="current-password"
+              placeholder="Entrez votre mot de passe" 
+              required 
+            />
           </div>
-          <button class="btn btn-primary w-100" type="submit">Se connecter</button>
+          
+          <button class="btn btn-primary w-100 login-btn" type="submit">
+            <i class="fa fa-sign-in-alt me-2"></i>Se connecter
+          </button>
         </form>
       </div>
-    </div>
-    <p class="text-muted mt-3">Astuce: admin / admin (MVP)</p>
+    </div>    
   </div>
 </div>
 {% endblock %}

@@ -1,40 +1,115 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .register-container {
+    min-height: calc(100vh - 200px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .register-card {
+    border-radius: 12px;
+    border: none;
+  }
+  .register-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  .register-header h4 {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+  }
+  .register-header p {
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+  .form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+  }
+  .form-control-lg::placeholder {
+    font-size: 0.95rem;
+    color: #adb5bd;
+  }
+  .register-btn {
+    padding: 0.75rem;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+  .register-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+  }
+</style>
 
-<div class="row justify-content-center">
-  <div class="col-12 col-md-6 col-lg-5">
-    <div class="card shadow-sm">
-      <div class="card-body">
-
-        <h4 class="mb-3">Créer un compte</h4>
+<div class="register-container">
+  <div class="col-11 col-sm-8 col-md-6 col-lg-5">
+    <div class="card shadow-lg register-card">
+      <div class="card-body p-4 p-md-5">
+        <div class="register-header">
+          <i class="fa fa-user-plus fa-3x text-primary mb-3"></i>
+          <h4>Créer un compte</h4>
+          <p>Rejoignez le système de supervision réseau</p>
+        </div>
 
         <form method="post">
-
-          <div class="mb-3">
-            <label class="form-label">Nom d’utilisateur *</label>
-            <input name="username" class="form-control" required>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-user me-2 text-muted"></i>Nom d'utilisateur *
+            </label>
+            <input 
+              name="username" 
+              class="form-control form-control-lg" 
+              placeholder="Choisissez un nom d'utilisateur"
+              required
+            />
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Email *</label>
-            <input name="email" type="email" class="form-control" required>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-envelope me-2 text-muted"></i>Email *
+            </label>
+            <input 
+              name="email" 
+              type="email" 
+              class="form-control form-control-lg"
+              placeholder="votre.email@exemple.com"
+              required
+            />
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Mot de passe *</label>
-            <input type="password" name="password" class="form-control" required>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-lock me-2 text-muted"></i>Mot de passe *
+            </label>
+            <input 
+              type="password" 
+              name="password" 
+              class="form-control form-control-lg"
+              placeholder="Entrez un mot de passe sécurisé"
+              required
+            />
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Confirmer le mot de passe *</label>
-            <input type="password" name="password2" class="form-control" required>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="fa fa-lock me-2 text-muted"></i>Confirmer le mot de passe *
+            </label>
+            <input 
+              type="password" 
+              name="password2" 
+              class="form-control form-control-lg"
+              placeholder="Confirmez votre mot de passe"
+              required
+            />
           </div>
 
-          <button class="btn btn-primary w-100 mt-3" type="submit">
-            Créer le compte
+          <button class="btn btn-primary w-100 register-btn" type="submit">
+            <i class="fa fa-user-check me-2"></i>Créer le compte
           </button>
         </form>
-
       </div>
     </div>
   </div>
