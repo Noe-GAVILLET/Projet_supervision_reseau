@@ -79,35 +79,42 @@ def check_thresholds(db, host, category, oid, val, Alert):
     warn = thresholds.get("warning", 80)
     crit = thresholds.get("critical", 90)
 
+    # 🔹 Extraire un identifiant unique pour cette métrique (ex: "C:\\" pour storage, "Core 0" pour cpu)
+    metric_id = oid.split(".")[0] if isinstance(oid, str) else str(oid)
+    
+    # 🔹 Échapper les caractères spéciaux SQL pour le filtre LIKE (\ devient \\)
+    # Remplacer \ par \\ pour éviter les problèmes avec les chemins Windows (C:\, E:\, etc.)
+    metric_id_escaped = metric_id.replace("\\", "\\\\")
+
     # 🔹 Application des seuils
     if value >= crit:
-        open_alert(db, Alert, host.id, "critical", f"{cat.upper()} critique sur {host.hostname} ({value:.1f}%)")
+        open_alert(db, Alert, host.id, "critical", f"{cat.upper()} critique sur {host.hostname} - {metric_id} ({value:.1f}%)")
     elif value >= warn:
-        # Si une alerte critique ouverte existe déjà pour ce type, la
-        # rétrograder en warning (au lieu de créer une warning en plus),
-        # afin d'éviter d'avoir simultanément critical + warning pour la
-        # même cause lorsqu'on élève les seuils.
+        # Si une alerte critique ouverte existe déjà pour cette métrique spécifique, la
+        # rétrograder en warning (au lieu de créer une warning en plus)
         try:
             existing_crit = (
                 Alert.query.filter_by(host_id=host.id, severity="critical")
                 .filter(Alert.resolved_at.is_(None))
-                .filter(Alert.message.like(f"{cat.upper()}%"))
+                .filter(Alert.message.like(f"{cat.upper()}%{metric_id_escaped}%"))
                 .all()
             )
             if existing_crit:
                 for a in existing_crit:
                     a.severity = "warning"
-                    a.message = f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)"
+                    a.message = f"{cat.upper()} élevé sur {host.hostname} - {metric_id} ({value:.1f}%)"
                     db.session.add(a)
                 db.session.commit()
+                # Pas d'email lors d'un downgrade critical -> warning
             else:
-                open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)")
+                open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} - {metric_id} ({value:.1f}%)")
         except Exception:
             # fallback : tenter d'ouvrir une alerte warning normalement
-            open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} ({value:.1f}%)")
+            open_alert(db, Alert, host.id, "warning", f"{cat.upper()} élevé sur {host.hostname} - {metric_id} ({value:.1f}%)")
     else:
-        # Si la valeur est revenue à la normale, on clôt l’alerte
-        resolve_alert(db, Alert, host.id, cat, cat.upper())
+        # Si la valeur est revenue à la normale, on clôt UNIQUEMENT l'alerte de cette métrique spécifique
+        # On utilise un filtre précis pour ne pas résoudre les alertes des autres métriques de la même catégorie
+        resolve_alert(db, Alert, host.id, cat, f"{cat.upper()}%{metric_id_escaped}%")
 
 # ---------------------------------------------------------------
 # Renvoie la sévérité ("normal", "warning", "critical")
