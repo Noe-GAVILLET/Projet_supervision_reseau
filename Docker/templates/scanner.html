@@ -20,8 +20,11 @@
         <div class="col-md-2 d-grid align-self-end">
           <button id="start-btn" type="submit" class="btn btn-primary">Lancer le scan</button>
         </div>
-        <div class="col-md-2 d-grid align-self-end">
+        <div class="col-md-1 d-grid align-self-end">
           <button id="stop-btn" type="button" class="btn btn-outline-danger" disabled>Arrêter</button>
+        </div>
+        <div class="col-md-1 d-grid align-self-end">
+          <button id="clear-btn" type="button" class="btn btn-outline-secondary" title="Vider les résultats"><i class="bi bi-trash"></i></button>
         </div>
       </form>
     </div>
@@ -42,7 +45,7 @@
           <thead>
             <tr>
               <th>IP</th>
-              <th>SysName / réponse</th>
+              <th>Hostname</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -63,12 +66,68 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressText = document.getElementById('progress-text');
   const startBtn = document.getElementById('start-btn');
   const stopBtn = document.getElementById('stop-btn');
+  const clearBtn = document.getElementById('clear-btn');
 
   let evtSource = null;
+  let scannedDevices = [];
+
+  // Fonction pour sauvegarder les résultats
+  function saveResults() {
+    sessionStorage.setItem('scannerDevices', JSON.stringify(scannedDevices));
+    sessionStorage.setItem('scannerCommunity', document.getElementById('community').value.trim());
+  }
+
+  // Fonction pour restaurer les résultats
+  function loadResults() {
+    const saved = sessionStorage.getItem('scannerDevices');
+    const savedCommunity = sessionStorage.getItem('scannerCommunity');
+    
+    if (saved) {
+      try {
+        scannedDevices = JSON.parse(saved);
+        const community = savedCommunity || 'public';
+        
+        // Restaurer les résultats dans le tableau
+        resultsTable.innerHTML = '';
+        scannedDevices.forEach(d => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${d.ip}</td><td>${d.sysname}</td><td><a class="btn btn-sm btn-outline-primary" href="/hosts/new?ip=${encodeURIComponent(d.ip)}&port=161&snmp_community=${encodeURIComponent(community)}&hostname=${encodeURIComponent(d.sysname)}">Ajouter</a></td>`;
+          resultsTable.appendChild(tr);
+        });
+
+        // Afficher un message si des équipements ont été restaurés
+        if (scannedDevices.length > 0) {
+          progressArea.style.display = 'block';
+          progressText.textContent = `${scannedDevices.length} équipements (session précédente)`;
+          progressBar.style.width = '100%';
+          progressBar.classList.add('bg-success');
+        }
+      } catch (e) {
+        console.error('Erreur lors de la restauration des résultats:', e);
+      }
+    }
+  }
+
+  // Fonction pour ajouter un appareil détecté
+  function addDevice(device, community) {
+    scannedDevices.push(device);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${device.ip}</td><td>${device.sysname}</td><td><a class="btn btn-sm btn-outline-primary" href="/hosts/new?ip=${encodeURIComponent(device.ip)}&port=161&snmp_community=${encodeURIComponent(community)}&hostname=${encodeURIComponent(device.sysname)}">Ajouter</a></td>`;
+    resultsTable.appendChild(tr);
+    saveResults();
+  }
+
+  // Charger les résultats au démarrage
+  loadResults();
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    
+    // Réinitialiser les résultats pour un nouveau scan
     resultsTable.innerHTML = '';
+    scannedDevices = [];
+    sessionStorage.removeItem('scannerDevices');
+    
     const network = document.getElementById('network').value.trim();
     const community = document.getElementById('community').value.trim() || 'public';
     if (!network) return alert('Entrez une plage réseau valide');
@@ -78,6 +137,8 @@ document.addEventListener('DOMContentLoaded', () => {
     evtSource = new EventSource(url);
 
     progressArea.style.display = 'block';
+    progressBar.classList.remove('bg-success');
+    progressBar.classList.add('bg-primary');
     startBtn.disabled = true;
     stopBtn.disabled = false;
 
@@ -96,19 +157,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     evtSource.addEventListener('device', e => {
       const d = JSON.parse(e.data);
-      const tr = document.createElement('tr');
-      // link to the real host creation route (/hosts/new). Use form field names expected by the handler.
-      tr.innerHTML = `<td>${d.ip}</td><td>${d.sysname}</td><td><a class="btn btn-sm btn-outline-primary" href="/hosts/new?ip=${encodeURIComponent(d.ip)}&port=161&snmp_community=${encodeURIComponent(community)}&hostname=${encodeURIComponent(d.sysname)}">Ajouter</a></td>`;
-      resultsTable.appendChild(tr);
+      addDevice(d, community);
     });
 
     evtSource.addEventListener('done', e => {
       const data = JSON.parse(e.data);
-      progressText.textContent = `${data.done} / ${data.total}`;
+      progressText.textContent = `${data.done} / ${data.total} - Scan terminé`;
       progressBar.style.width = '100%';
+      progressBar.classList.remove('bg-primary');
+      progressBar.classList.add('bg-success');
       startBtn.disabled = false;
       stopBtn.disabled = true;
       if (evtSource) evtSource.close();
+      saveResults();
     });
 
     evtSource.addEventListener('error', e => {
@@ -125,6 +186,20 @@ document.addEventListener('DOMContentLoaded', () => {
       evtSource = null;
       startBtn.disabled = false;
       stopBtn.disabled = true;
+      saveResults();
+    }
+  });
+
+  // Bouton pour vider les résultats
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Voulez-vous vraiment effacer tous les équipements détectés ?')) {
+      scannedDevices = [];
+      resultsTable.innerHTML = '';
+      sessionStorage.removeItem('scannerDevices');
+      sessionStorage.removeItem('scannerCommunity');
+      progressArea.style.display = 'none';
+      progressBar.style.width = '0%';
+      progressText.textContent = '';
     }
   });
 });
