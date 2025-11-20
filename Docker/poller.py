@@ -197,7 +197,8 @@ def poll_host_metrics(app, db, Host, Alert):
                         log_poller("🟢", f"{hostname} ajouté avec succès [{host.ip}] (première détection)")
 
                     # 🔹 Cas 2 : Down → Up → vraie reprise → mail envoyé
-                    else:
+                    # Ne créer l'alerte "SNMP rétabli" que si le statut précédent était "down"
+                    elif previous_status == "down":
                         open_alert(db, Alert, host_id, "info",
                                 f"{SNMP_UP_MSG} sur {hostname} ({host.ip})")
                         log_poller("✅", f"Host {hostname} back UP [{host.ip}]")

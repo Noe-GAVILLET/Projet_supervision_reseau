@@ -28,7 +28,7 @@ def _get_alert_recipients() -> list[str]:
         }
         return sorted(emails)
     except Exception as e:
-        print(f"[email] ⚠️ Impossible de récupérer les destinataires: {e}")
+        logger.warning(f"[email] ⚠️ Impossible de récupérer les destinataires: {e}")
         return []
 
 
@@ -41,14 +41,17 @@ def send_alert_email(subject: str, body: str, to: list[str] | None = None) -> bo
     Retourne True si OK, False sinon.
     """
     if not APP_PASSWORD:
-        print("[email] ⚠️ Mot de passe d'application manquant.")
+        logger.warning("[email] ⚠️ Mot de passe d'application manquant.")
         return False
 
     recipients = to if to is not None else _get_alert_recipients()
     if not recipients:
         # Aucun destinataire configuré -> ne pas envoyer de mail du tout
-        print("[email] ℹ️ Aucun destinataire configuré pour les alertes — aucun e-mail envoyé.")
+        logger.info("[email] ℹ️ Aucun destinataire configuré pour les alertes — aucun e-mail envoyé.")
         return False
+    
+    logger.info(f"[email] 📧 Tentative d'envoi d'email à : {recipients}")
+    logger.info(f"[email] 📧 Sujet : {subject}")
 
     msg = MIMEMultipart()
     msg["From"] = SENDER_EMAIL
@@ -64,10 +67,10 @@ def send_alert_email(subject: str, body: str, to: list[str] | None = None) -> bo
             server.login(SENDER_EMAIL, APP_PASSWORD)
             # sendmail garantit l'envoi à la liste complète
             server.sendmail(SENDER_EMAIL, recipients, msg.as_string())
-            print(f"[email] ✅ Alerte envoyée à: {', '.join(recipients)}")
+            logger.info(f"[email] ✅ Alerte envoyée à: {', '.join(recipients)}")
             return True
     except Exception as e:
-        print(f"[email] ❌ Erreur envoi mail: {e}")
+        logger.error(f"[email] ❌ Erreur envoi mail: {e}")
         return False
 
 

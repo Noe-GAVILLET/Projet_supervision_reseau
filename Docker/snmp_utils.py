@@ -32,7 +32,7 @@ def snmp_get(ip: str, community: str, port: int, oid: str):
     iterator = getCmd(
         SnmpEngine(),
         CommunityData(community, mpModel=1),  # SNMP v2c
-        UdpTransportTarget((ip, port), timeout=2, retries=1),
+        UdpTransportTarget((ip, port), timeout=1, retries=0),
         ContextData(),
         ObjectType(ObjectIdentity(oid))
     )
@@ -50,7 +50,7 @@ def snmp_walk(ip: str, community: str, port: int, oid: str, limit: int = 50):
     for (errInd, errStat, errIdx, varBinds) in nextCmd(
         SnmpEngine(),
         CommunityData(community, mpModel=1),
-        UdpTransportTarget((ip, port), timeout=2, retries=1),
+        UdpTransportTarget((ip, port), timeout=1, retries=0),
         ContextData(),
         ObjectType(ObjectIdentity(oid)),
         lexicographicMode=False

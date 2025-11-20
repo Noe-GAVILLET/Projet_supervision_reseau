@@ -486,6 +486,60 @@ def alerts():
 
     return render_template("alerts.html", alerts=alerts, severity=severity, q=q, status=status)
 
+@app.route("/alerts/export")
+@login_required
+def export_alerts_csv():
+    """Exporte la liste des alertes au format CSV."""
+    severity = request.args.get("severity")
+    q = request.args.get("q")
+    status = request.args.get("status", "all")
+
+    query = Alert.query.join(Host, isouter=True)
+
+    # Appliquer les mêmes filtres que la page alerts
+    if severity:
+        query = query.filter(Alert.severity == severity)
+    if q:
+        query = query.filter(Host.hostname.ilike(f"%{q}%"))
+    if status == "active":
+        query = query.filter(Alert.resolved_at == None)
+    elif status == "resolved":
+        query = query.filter(Alert.resolved_at.isnot(None))
+
+    alerts = query.order_by(Alert.created_at.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # En-têtes
+    writer.writerow(['ID', 'Hôte', 'IP', 'Gravité', 'Message', 'Créée le', 'Résolue le', 'Statut'])
+
+    for a in alerts:
+        hostname = a.host.hostname if a.host else "Inconnu"
+        ip = a.host.ip if a.host else "-"
+        created = a.created_at.strftime("%Y-%m-%d %H:%M:%S") if a.created_at else ""
+        resolved = a.resolved_at.strftime("%Y-%m-%d %H:%M:%S") if a.resolved_at else ""
+        statut = "Résolue" if a.resolved_at else "Active"
+
+        writer.writerow([
+            a.id,
+            hostname,
+            ip,
+            a.severity,
+            a.message,
+            created,
+            resolved,
+            statut
+        ])
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment;filename=alerts_export.csv"}
+    )
+
+
 @app.route("/alerts/delete/<int:alert_id>", methods=["POST"])
 def delete_alert(alert_id):
     alert = Alert.query.get(alert_id)
@@ -1246,9 +1300,22 @@ def api_alert_count():
 
 @app.route("/api/alerts/latest")
 def api_alerts_latest():
-    """Retourne les alertes actives récentes (moins de 1 min)."""
-    since = datetime.utcnow() - timedelta(seconds=60)
-    alerts = Alert.query.filter(Alert.created_at >= since).filter(Alert.resolved_at == None).all()
+    """Retourne les alertes récentes (créées ou résolues dans les 2 dernières minutes)."""
+    since = datetime.utcnow() - timedelta(seconds=120)
+    
+    # Alertes créées récemment (non résolues)
+    new_alerts = Alert.query.filter(
+        Alert.created_at >= since,
+        Alert.resolved_at == None
+    ).all()
+    
+    # Alertes résolues récemment (pour afficher les résolutions)
+    resolved_alerts = Alert.query.filter(
+        Alert.resolved_at >= since
+    ).all()
+    
+    # Combiner et dédupliquer
+    all_alerts = {a.id: a for a in new_alerts + resolved_alerts}.values()
 
     return jsonify([
         {
@@ -1256,9 +1323,10 @@ def api_alerts_latest():
             "severity": a.severity,
             "message": a.message,
             "host": a.host.hostname if a.host else "Inconnu",
-            "created_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            "created_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "resolved": a.resolved_at is not None
         }
-        for a in alerts
+        for a in all_alerts
     ])
 
 # ---------- Hosts ----------
