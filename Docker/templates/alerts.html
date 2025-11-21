@@ -4,14 +4,14 @@
   <!-- En-tête -->
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="fw-bold mb-0">
-      <i class="bi bi-bell-fill text-danger"></i> Surveillance en temps réel
+      <i class="fas fa-bell text-danger"></i> Surveillance en temps réel
     </h4>
     <div>
       <a class="btn btn-outline-success btn-sm me-2" href="{{ url_for('export_alerts_csv', severity=severity or '', q=q or '', status=status or 'all') }}">
-        <i class="bi bi-download"></i> Exporter CSV
+        <i class="fas fa-download"></i> Exporter CSV
       </a>
       <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin') }}">
-        <i class="bi bi-arrow-left"></i> Retour aux hôtes
+        <i class="fas fa-arrow-left"></i> Retour aux hôtes
       </a>
     </div>
   </div>
@@ -49,7 +49,7 @@
 
     <div class="col-md-2 d-grid">
       <button type="submit" class="btn btn-primary">
-        <i class="bi bi-filter"></i> Filtrer
+        <i class="fas fa-filter"></i> Filtrer
       </button>
     </div>
   </form>
@@ -57,7 +57,7 @@
   <!-- Table -->
   {% if alerts|length == 0 %}
     <div class="alert alert-info shadow-sm">
-      <i class="bi bi-info-circle-fill"></i>
+      <i class="fas fa-info-circle"></i>
       <strong>Aucune alerte détectée.</strong><br>
       Le poller SNMP s’exécute toutes les 15 secondes — actualisez dans quelques instants.
     </div>
@@ -118,9 +118,9 @@
               <td class="text-start">{{ alert.message }}</td>
               <td class="text-center">
                 {% if alert.resolved_at %}
-                  <span class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Rétablie</span>
+                  <span class="text-success fw-bold"><i class="fas fa-check-circle"></i> Rétablie</span>
                 {% else %}
-                  <span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Active</span>
+                  <span class="text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> Active</span>
                 {% endif %}
               </td>
               <td class="text-center">
@@ -129,7 +129,7 @@
                         onsubmit="return confirm('Supprimer cette alerte ?');"
                         style="display:inline;">
                     <button type="submit" class="btn btn-link text-danger p-0" title="Supprimer">
-                      <i class="bi bi-trash-fill fs-5"></i>
+                      <i class="fas fa-trash fs-5"></i>
                     </button>
                   </form>
                 {% else %}

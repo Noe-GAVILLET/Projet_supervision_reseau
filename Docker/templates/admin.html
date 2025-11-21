@@ -11,7 +11,7 @@
     <div class="card shadow-sm border-0 h-100 clickable-card" data-status="all" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
-          <i class="bi bi-hdd-network text-primary"></i> Total hôtes
+          <i class="fas fa-network-wired text-primary"></i> Total hôtes
         </h6>
         <h3 class="fw-bold text-primary">{{ total_hosts }}</h3>
       </div>
@@ -22,7 +22,7 @@
     <div class="card shadow-sm border-0 h-100 clickable-card" data-status="up" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
-          <i class="bi bi-check-circle-fill text-success"></i> UP
+          <i class="fas fa-check-circle text-success"></i> UP
         </h6>
         <h3 class="fw-bold text-success">{{ hosts_up }}</h3>
       </div>
@@ -33,7 +33,7 @@
     <div class="card shadow-sm border-0 h-100 clickable-card" data-status="warning" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
-          <i class="bi bi-exclamation-triangle-fill text-warning"></i> Warning
+          <i class="fas fa-exclamation-triangle text-warning"></i> Warning
         </h6>
         <h3 class="fw-bold text-warning">{{ hosts_warning }}</h3>
       </div>
@@ -44,7 +44,7 @@
     <div class="card shadow-sm border-0 h-100 clickable-card" data-status="down" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
-          <i class="bi bi-x-octagon-fill text-danger"></i> DOWN
+          <i class="fas fa-stop-circle text-danger"></i> DOWN
         </h6>
         <h3 class="fw-bold text-danger">{{ hosts_down }}</h3>
       </div>
@@ -55,7 +55,7 @@
     <div class="card shadow-sm border-0 h-100 clickable-card" data-status="unknown" tabindex="0" role="button">
       <div class="card-body text-center">
         <h6 class="text-muted mb-1">
-          <i class="bi bi-question-circle-fill text-secondary"></i> Inconnus
+          <i class="fas fa-question-circle text-secondary"></i> Inconnus
         </h6>
         <h3 class="fw-bold text-secondary">{{ hosts_unknown }}</h3>
       </div>
@@ -71,7 +71,7 @@
   <div class="card shadow-sm">
     <div class="d-flex justify-content-between align-items-center px-2 py-1 border-bottom bg-light rounded-top">
       <h5 class="mb-0">
-        <i class="bi bi-hdd-network me-1"></i> Liste des hôtes supervisés
+        <i class="fas fa-network-wired me-1"></i> Liste des hôtes supervisés
       </h5>
 
       <div class="d-flex align-items-center">
@@ -82,7 +82,7 @@
         </select>
 
         <a href="{{ url_for('export_hosts_csv') }}" class="btn btn-outline-success btn-sm px-3">
-          <i class="bi bi-download me-1"></i> Exporter
+          <i class="fas fa-download me-1"></i> Exporter
         </a>
       </div>
     </div>
@@ -138,19 +138,19 @@
                 {# Afficher le statut à partir de la colonne `h.status` (BDD) uniquement #}
                 {% if h.status == 'down' %}
                   <span class="badge bg-danger me-2">
-                    <i class="bi bi-x-octagon"></i> DOWN
+                    <i class="fas fa-stop-circle"></i> DOWN
                   </span>
                 {% elif h.status == 'warning' %}
                   <span class="badge bg-warning text-dark me-2">
-                    <i class="bi bi-exclamation-triangle-fill"></i> Warning
+                    <i class="fas fa-exclamation-triangle"></i> Warning
                   </span>
                 {% elif h.status == 'up' %}
                   <span class="badge bg-success me-2">
-                    <i class="bi bi-check-circle"></i> UP
+                    <i class="fas fa-check-circle"></i> UP
                   </span>
                 {% else %}
                   <span class="badge bg-secondary me-2">
-                    <i class="bi bi-question-circle"></i> Inconnu
+                    <i class="fas fa-question-circle"></i> Inconnu
                   </span>
                 {% endif %}
 
@@ -170,18 +170,18 @@
                   <button class="btn btn-sm btn-secondary me-1" disabled>Injoignable</button>
                 {% else %}
                   <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">
-                    <i class="bi bi-eye"></i> View
+                    <i class="fas fa-eye"></i> View
                   </a>
                 {% endif %}
 
                 <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">
-                  <i class="bi bi-pencil"></i> Edit
+                  <i class="fas fa-pencil-alt"></i> Edit
                 </a>
 
                 <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
                       onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
                   <button class="btn btn-sm btn-outline-danger" type="submit">
-                    <i class="bi bi-trash"></i> Delete
+                    <i class="fas fa-trash"></i> Delete
                   </button>
                 </form>
               </td>
@@ -193,7 +193,7 @@
                   <button class="btn btn-sm btn-secondary" disabled>Injoignable</button>
                 {% else %}
                   <a class="btn btn-sm btn-outline-primary" href="{{ url_for('host_view', host_id=h.id) }}">
-                    <i class="bi bi-eye"></i> View
+                    <i class="fas fa-eye"></i> View
                   </a>
                 {% endif %}
               </td>

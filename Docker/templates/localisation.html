@@ -7,7 +7,7 @@
     <a class="btn btn-outline-secondary me-2" href="{{ url_for('admin') }}">Retour</a>
     {% if session.get('role') == 'admin' %}
     <a class="btn btn-primary" href="{{ url_for('host_new') }}">
-      <i class="bi bi-plus-lg me-1"></i> Ajouter un hôte
+      <i class="fas fa-plus me-1"></i> Ajouter un hôte
     </a>
     {% endif %}
   </div>
@@ -70,7 +70,7 @@
           a.href = '#';
           a.className = 'list-group-item list-group-item-action d-flex align-items-center';
           a.innerHTML = `
-            <i class="bi bi-geo-alt-fill text-primary me-2" aria-hidden="true"></i>
+            <i class="fas fa-map-marker-alt text-primary me-2" aria-hidden="true"></i>
             <div class="flex-grow-1">
               <div class="fw-bold">${h.hostname}</div>
               <small class="text-muted">${h.ip}</small>
