@@ -1,4 +1,4 @@
-@startuml "Supervision Réseau - Diagramme UML"
+@startuml
 !theme plain
 skinparam backgroundColor #FEFEFE
 skinparam classBackgroundColor #E3F2FD
@@ -12,15 +12,14 @@ skinparam maxMessageSize 250
 ' ============================================================================
 
 class Utilisateur {
-  - id
-  - username
-  - email
-  - motDePasse
-  - role: admin | operateur
-  - actif
-  - receive_alerts
-  - dateCreation
-  - dateModification
+  - username : string
+  - email : string
+  - motDePasse : string
+  - role : string
+  - actif : boolean
+  - receive_alerts : boolean
+  - dateCreation : datetime
+  - dateModification : datetime
   --
   + seConnecter()
   + verifierMotDePasse()
@@ -32,17 +31,16 @@ class Utilisateur {
 ' ============================================================================
 
 class Equipement {
-  - id
-  - hostname
-  - ip
-  - port SNMP
-  - communauteSNMP
-  - description
-  - statut: up | down | warning
-  - lastStatusChange
-  - snmpCategories  
-  - latitude
-  - longitude
+  - hostname : string
+  - ip : string
+  - portSNMP : int
+  - communauteSNMP : string
+  - description : string
+  - statut : string
+  - lastStatusChange : datetime
+  - snmpCategories : string
+  - latitude : float
+  - longitude : float
   --
   + updateStatut()
   + isAccessible()
@@ -50,26 +48,23 @@ class Equipement {
 }
 
 class Template {
-  - id
-  - nom
-  - description
-  - versionSNMP: v1 | v2c | v3
-  - categoriesMetriques
+  - nom : string
+  - description : string
+  - versionSNMP : string
+  - categoriesMetriques : string
   --
   + getCategories()
 }
 
 class Groupe {
-  - id
-  - nom
-  - description
+  - nom : string
+  - description : string
   --
   + getEquipements()
 }
 
 class Tag {
-  - id
-  - nom
+  - nom : string
 }
 
 ' ============================================================================
@@ -77,14 +72,11 @@ class Tag {
 ' ============================================================================
 
 class Seuil {
-  - id
-  - equipement_id
-  - typeMetrique: CPU | RAM | Storage
-  - valeurWarning
-  - valeurCritical
+  - typeMetrique : string
+  - criticité : float
   --
-  + verifier(valeur)
-  + getSeverite(valeur)
+  + verifier()
+  + getSeverite()
 }
 
 ' ============================================================================
@@ -92,9 +84,9 @@ class Seuil {
 ' ============================================================================
 
 class Poller {
-  - frequence: minutes
-  - derniereExecution
-  - statut: actif | erreur
+  - frequence : int
+  - derniereExecution : datetime
+  - statut : string
   --
   + demarrer()
   + interrogerEquipement()
@@ -108,13 +100,11 @@ class Poller {
 ' ============================================================================
 
 class Metrique {
-  - id
-  - equipement_id
-  - oid
-  - nom: CPU | RAM | Storage | Interface
-  - valeur
-  - dateCollecte
-  - unite
+  - oid : string
+  - nom : string
+  - valeur : float
+  - dateCollecte : datetime
+  - unite : string
   --
   + sauvegarder()
 }
@@ -124,14 +114,12 @@ class Metrique {
 ' ============================================================================
 
 class Alerte {
-  - id
-  - equipement_id
-  - severite: info | warning | critical
-  - message
-  - dateCreation
-  - dateResolution
+  - severite : string
+  - message : string
+  - dateCreation : datetime
+  - dateResolution : datetime
   --
-  + acquitter(user_id)
+  + acquitter()
   + resoudre()
   + notifier()
 }
@@ -141,55 +129,29 @@ class Alerte {
 ' ============================================================================
 
 class FichierCSV {
-  --
   + importer()
   + exporter()
 }
 
 ' ============================================================================
-' FLUX PRINCIPAL: UTILISATEUR -> CONFIGURATION
+' ASSOCIATIONS (inchangées)
 ' ============================================================================
 
 Utilisateur "1" --> "0..*" Equipement : crée/modifie
-
-' ============================================================================
-' FLUX PRINCIPAL: CONFIGURATION DES EQUIPEMENTS
-' ============================================================================
-
 Equipement "0..*" --> "1" Template : utilise
 Equipement "*" --> "*" Tag : possède
 Equipement "0..*" --> "1" Groupe : appartient
 Equipement "1" --> "0..*" Seuil : a
-
-' ============================================================================
-' FLUX PRINCIPAL: IMPORT/EXPORT
-' ============================================================================
-
 FichierCSV --> Equipement : importe/exporte
-
-' ============================================================================
-' FLUX PRINCIPAL: POLLER -> COLLECTE DE DONNÉES
-' ============================================================================
-
 Poller --> Template : consulte\n(quoi collecter ?)
 Poller --> Equipement : interroge
 Poller --> Metrique : crée
-
-' ============================================================================
-' FLUX PRINCIPAL: ANALYSE DES SEUILS
-' ============================================================================
-
 Metrique --> Seuil : comparaison
 Seuil --> Alerte : déclenche
-
-' ============================================================================
-' FLUX PRINCIPAL: GESTION DES ALERTES
-' ============================================================================
-
 Alerte --> Utilisateur : notifie/acquitte
 
 ' ============================================================================
-' NOTES EXPLICATIVES
+' NOTES (inchangées)
 ' ============================================================================
 
 note right of Utilisateur
@@ -206,38 +168,25 @@ end note
 
 note right of Template
   **MODÈLE**
-  Défini les métriques
+  Définit les métriques
   à surveiller (CPU, RAM...)
-  Appliqué à l'équipement
 end note
 
 note right of Seuil
   **LIMITES D'ALERTE**
-  Warning (léger)
-  Critical (grave)
-  Définis par équipement
+  Warning / Critical
 end note
 
 note right of Poller
   **CŒUR DU SYSTÈME**
-  Tourne en continu
-  Interroge via SNMP
-  Collecte & analyse
+  Collecte SNMP continue
 end note
 
 note right of Metrique
-  **DONNÉES**
-  CPU, RAM, Storage
-  Interfaces status
   Horodatées & archivées
 end note
 
 note right of Alerte
-  **NOTIFICATIONS**
-  Créées si critical
-  Envoyées par email
-  Affichées sur le site
-  Peuvent être acquittées
+  Alerte, notification, acquittement
 end note
-
 @enduml
