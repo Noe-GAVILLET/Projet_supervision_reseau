@@ -1,0 +1,146 @@
+@startuml use_case_diagram
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 10
+skinparam actorFontSize 11
+skinparam packageFontSize 12
+skinparam nodesep 80
+skinparam ranksep 80
+
+title Diagramme de Cas d'Usage
+' ============================================================================
+' ACTEURS
+' ============================================================================
+actor ":Opérateur:" as User
+actor ":Administrateur:" as Admin
+actor ":Poller SNMP:" as Poller
+
+Admin -up-|> User
+
+' ============================================================================
+' CAS D'USAGE - AUTHENTIFICATION
+' ============================================================================
+rectangle "Authentification" #LightBlue {
+  usecase UC1 as "Se connecter\nSe déconnecter\nS'inscrire"
+}
+
+' ============================================================================
+' CAS D'USAGE - CONSULTATION
+' ============================================================================
+rectangle "Consultation" #LightGreen {
+  usecase UC2 as "Dashboard global\nStatuts en temps réel\nGraphiques métriques\nRésumé des alertes" 
+  
+  usecase UC3 as "Détails équipement\nMétriques SNMP\nHistoriques\nGraphiques CPU/RAM/Interfaces"
+  
+  usecase UC4 as "Recherche et filtres\nPar nom d'hôte\nPar IP\nPar groupe\nPar catégorie\nVue par catégorie"
+  
+  usecase UC5 as "Carte géolocalisée\nPositions équipements\nStatuts visuels"
+  
+  usecase UC6 as "Profil utilisateur\nPréférences\nNotifications"
+}
+
+' ============================================================================
+' CAS D'USAGE - GESTION ALERTES
+' ============================================================================
+rectangle "Gestion Alertes" #LightCoral {
+  usecase UC7 as "Consulter alertes\nActives\nHistorique\nFiltre par sévérité"    
+  
+  usecase UC9 as "Exporter alertes\nFormat CSV"
+  
+  usecase UC10 as "Supprimer alerte\nAdmin uniquement" #pink
+}
+
+' ============================================================================
+' CAS D'USAGE - ADMINISTRATION ÉQUIPEMENTS
+' ============================================================================
+rectangle "Administration des équipements" #LightYellow {
+  usecase UC11 as "Ajouter équipement\nNom et IP\nCommunauté SNMP\nCatégories surveillées\nSeuils personnalisés"
+  
+  usecase UC12 as "Éditer équipement\nModifier config\nSeuils alertes\nGroupes et tags\nGéolocalisation"
+  
+  usecase UC13 as "Supprimer équipement\nSuppression données"
+  
+  usecase UC14 as "Scanner réseau\nDécouverte auto"
+  
+  usecase UC15 as "Import/Export CSV\nImport massif\nExport config"
+}
+
+' ============================================================================
+' CAS D'USAGE - ADMINISTRATION SYSTÈME
+' ============================================================================
+rectangle "Administration du système" #Lavender {
+  usecase UC16 as "Créer utilisateur\nLister utilisateurs\nSupprimer utilisateur"
+  
+  usecase UC17 as "Éditer utilisateur\nModifier rôle\nModifier mot de passe\nActiver/Désactiver\nGestion notifications"
+  
+  usecase UC18 as "Créer groupe\nVoir détails groupe\nNom et description\nType équipement"  
+  
+  usecase UC19 as "Créer template\nConfigurer OID\nVersion SNMP"
+  
+  usecase UC20 as "Consulter logs\nPoller SNMP\nJournal événements\nErreurs système"
+}
+
+' ============================================================================
+' CAS D'USAGE - PROCESSUS AUTOMATIQUES
+' ============================================================================
+rectangle "Collecte Automatique" #WhiteSmoke {
+  usecase UC23 as "Poller SNMP\nCollecte toutes 15s\nPing accessibilité\nRécupération OID\nStockage BDD"
+  
+  usecase UC24 as "Analyse seuils\nVérification limites\nComparaison valeurs\nGénération alertes\nNotifications email"
+  
+  usecase UC25 as "Détection états\nChangement UP/DOWN\nCréation alertes\nMise à jour statuts"
+}
+
+' ============================================================================
+' RELATIONS OPÉRATEUR
+' ============================================================================
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+User --> UC6
+User --> UC7
+User --> UC9
+
+' ============================================================================
+' RELATIONS ADMINISTRATEUR
+' ============================================================================
+Admin --> UC10
+Admin --> UC11
+Admin --> UC12
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+
+
+' ============================================================================
+' RELATIONS POLLER
+' ============================================================================
+Poller --> UC23
+Poller --> UC24
+Poller --> UC25
+
+UC23 ..> UC24 : déclenche
+UC23 ..> UC25 : déclenche
+
+' ============================================================================
+' NOTES
+' ============================================================================
+note top of Poller
+  Processus automatique
+  en arrière-plan
+  APScheduler
+end note
+
+note bottom of "Collecte Automatique"
+  Catégories SNMP:
+  system, cpu, ram,
+  storage, interfaces
+end note
+
+@enduml

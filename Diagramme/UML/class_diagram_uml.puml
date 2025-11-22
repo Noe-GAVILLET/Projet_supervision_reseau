@@ -18,7 +18,13 @@ class Utilisateur {
   - motDePasse
   - role: admin | operateur
   - actif
+  - receive_alerts
   - dateCreation
+  - dateModification
+  --
+  + seConnecter()
+  + verifierMotDePasse()
+  + isAdmin()
 }
 
 ' ============================================================================
@@ -33,19 +39,32 @@ class Equipement {
   - communauteSNMP
   - description
   - statut: up | down | warning
+  - lastStatusChange
+  - snmpCategories  
+  - latitude
+  - longitude
+  --
+  + updateStatut()
+  + isAccessible()
+  + getSeuils()
 }
 
 class Template {
   - id
   - nom
+  - description
   - versionSNMP: v1 | v2c | v3
   - categoriesMetriques
+  --
+  + getCategories()
 }
 
 class Groupe {
   - id
   - nom
   - description
+  --
+  + getEquipements()
 }
 
 class Tag {
@@ -63,6 +82,9 @@ class Seuil {
   - typeMetrique: CPU | RAM | Storage
   - valeurWarning
   - valeurCritical
+  --
+  + verifier(valeur)
+  + getSeverite(valeur)
 }
 
 ' ============================================================================
@@ -88,10 +110,13 @@ class Poller {
 class Metrique {
   - id
   - equipement_id
+  - oid
   - nom: CPU | RAM | Storage | Interface
   - valeur
   - dateCollecte
   - unite
+  --
+  + sauvegarder()
 }
 
 ' ============================================================================
@@ -105,7 +130,10 @@ class Alerte {
   - message
   - dateCreation
   - dateResolution
-  - acquittePar
+  --
+  + acquitter(user_id)
+  + resoudre()
+  + notifier()
 }
 
 ' ============================================================================

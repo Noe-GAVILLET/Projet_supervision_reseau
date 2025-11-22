@@ -7,7 +7,7 @@ skinparam package {
   BorderThickness 2
 }
 
-title Systeme de Supervision Reseau via SNMP - Architecture Complete
+title Architecture Complete
 
 rectangle "SERVEUR SUPERVISION" #E3F2FD {
   
