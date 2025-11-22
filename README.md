@@ -63,42 +63,60 @@ L’application est découpée en plusieurs modules :
 ```mermaid
 gantt
     dateFormat  YYYY-MM-DD
-    title Supervision de matériel réseau via SNMP
-    Analyse et conception : 0, 2025-09-15, 1d
-    Analyse du cahier des charges : 9, 2025-09-15, 1d
-    Listing des cas d’usage : 12, 2025-09-15, 1d
-    Spécifications fonctionnelles : 11, 2025-09-15, 1d
-    Diagrammes UML : 10, 2025-09-15, 1d
-    Module de configuration : 1, 2025-09-17, 1d
-    Création structure projet : 13, 2025-09-17, 1d
-    Gestion configuration JSON/XML : 14, 2025-09-17, 1d
-    Création site web Flask : 15, 2025-09-17, 1d
-    Création module Ajout / suppression / édition équipements : 17, 2025-09-17, 1d
-    Création module Ajout / suppression / édition de collecteur : 18, 2025-09-17, 1d
-    Module de surveillance : 2, 2025-09-25, 1d
-    Implémentation SNMP Poller : 20, 2025-09-25, 1d
-    Application modèles de supervision : 19, 2025-09-25, 1d
-    Collecte et structuration des mesures : 21, 2025-09-25, 1d
-    Création de graphique : 22, 2025-09-25, 1d
-    Module de logs : 3, 2025-10-09, 1d
-    Création base de données SQLite : 23, 2025-10-09, 1d
-    Stockage des mesures SNMP : 24, 2025-10-09, 1d
-    Stockage des alertes : 26, 2025-10-09, 1d
-    Gestion des alertes : 4, 2025-10-16, 1d
-    Création des seuils : 25, 2025-10-16, 1d
-    Générateur d'alerte par mail : 27, 2025-10-16, 1d
-    Affichage alerte sur la page web : 28, 2025-10-16, 1d
-    Interface utilisateur : 5, 2025-10-24, 1d
-    Graphiques temps réel : 33, 2025-10-24, 1d
-    Affichage état détaillé équipement : 32, 2025-10-24, 1d
-    Page d'authentification : 30, 2025-10-24, 1d
-    Ajout navigation et filtre : 29, 2025-10-24, 1d
-    Ajout de CSS/Java : 31, 2025-10-24, 1d
-    Tests : 6, 2025-11-13, 1d
-    Test d'utilisation (Admin/Opérateur) : 37, 2025-11-13, 1d
-    Correction bugs et ajustements : 34, 2025-11-13, 1d
-    Finalisation / Livrables : 8, 2025-11-27, 1d
-    Rédaction manuel d’utilisation : 35, 2025-11-27, 1d
-    Préparation soutenance : 36, 2025-11-27, 0d
-    Examen : 9, 2025-12-04, 1d
+    title Supervision de matériel réseau via SNMP (état au 22/11/2025)
+
+    section Analyse_et_conception
+    Analyse_et_conception                 :done, ac, 2025-09-15, 1d
+    Analyse_du_cahier_des_charges         :done, adc, 2025-09-15, 1d
+    Listing_des_cas_d_usage               :done, lcu, 2025-09-15, 1d
+    Specifications_fonctionnelles         :done, sf, 2025-09-15, 1d
+    Diagrammes_UML                        :done, uml, 2025-09-15, 1d
+
+    section Module_de_configuration
+    Module_de_configuration               :done, mc, 2025-09-17, 1d
+    Creation_structure_projet             :done, csp, 2025-09-17, 1d
+    Gestion_configuration_JSON_XML        :done, gcj, 2025-09-17, 1d
+    Creation_site_web_Flask               :done, flask, 2025-09-17, 1d
+    Creation_module_Ajout_suppr_equipements :done, equipt, 2025-09-17, 1d
+    Creation_module_Ajout_suppr_collecteur  :done, coll, 2025-09-17, 1d
+
+    section Module_de_surveillance
+    Module_de_surveillance                :done, ms, 2025-09-25, 1d
+    Implementation_SNMP_Poller            :done, snmp, 2025-09-25, 1d
+    Application_modeles_de_supervision    :done, msup, 2025-09-25, 1d
+    Collecte_et_structuration_des_mesures :done, csm, 2025-09-25, 1d
+    Creation_de_graphique                 :done, graph, 2025-09-25, 1d
+
+    section Module_de_logs
+    Module_de_logs                        :done, log, 2025-10-09, 1d
+    Creation_base_de_donnees_SQLite       :done, bdd, 2025-10-09, 1d
+    Stockage_des_mesures_SNMP             :done, stsnmp, 2025-10-09, 1d
+    Stockage_des_alertes                  :done, stal, 2025-10-09, 1d
+
+    section Gestion_des_alertes
+    Gestion_des_alertes                   :done, ga, 2025-10-16, 1d
+    Creation_des_seuils                   :done, seuil, 2025-10-16, 1d
+    Generateur_alerte_par_mail            :done, mail, 2025-10-16, 1d
+    Affichage_alerte_sur_la_page_web      :done, alertw, 2025-10-16, 1d
+
+    section Interface_utilisateur
+    Interface_utilisateur                 :done, iu, 2025-10-24, 1d
+    Graphiques_temps_reel                 :done, gtr, 2025-10-24, 1d
+    Affichage_etat_detaille_equipement    :done, etat, 2025-10-24, 1d
+    Page_authentification                 :done, auth, 2025-10-24, 1d
+    Ajout_navigation_et_filtre            :done, nav, 2025-10-24, 1d
+    Ajout_de_CSS_Java                     :done, css, 2025-10-24, 1d
+
+    section Tests
+    Tests                                 :done, tests, 2025-11-13, 1d
+    Test_utilisation_Admin_Operateur      :done, testuse, 2025-11-13, 1d
+    Correction_bugs_et_ajustements        :done, corr, 2025-11-13, 1d
+
+    section Finalisation_Livrables
+    Finalisation_Livrables                :fin, 2025-11-27, 1d
+    Redaction_manuel_utilisation          :fin, 2025-11-27, 1d
+    Preparation_soutenance                :fin, 2025-11-27, 0d
+
+    section Examen
+    Examen                                :exam, 2025-12-04, 1d
 ```
