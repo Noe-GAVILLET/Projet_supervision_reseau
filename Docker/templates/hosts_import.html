@@ -21,12 +21,144 @@
             </div>
           </div>
           <div class="col-12 col-md-4">
-            <button class="btn btn-primary w-100" type="submit">Importer</button>
+            <!-- action=preview triggers server-side parsing and preview rendering -->
+            <input type="hidden" name="action" value="preview" />
+            <button class="btn btn-primary w-100" type="submit">Prévisualiser</button>
           </div>
         </div>
       </form>
     </div>
   </div>
+
+  {% if preview_rows %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="mb-3">Aperçu (édition possible)</h6>
+        <div class="table-responsive">
+          <form id="confirm-import-form" method="post">
+            <input type="hidden" name="action" value="import" />
+            <input type="hidden" name="rows_json" id="rows-json-input" />
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <button type="button" id="btn-add-row" class="btn btn-sm btn-outline-primary">Ajouter une ligne</button>
+              </div>
+              <div class="text-muted small">Éditez les cellules et cliquez sur « Confirmer l'import »</div>
+            </div>
+            <table class="table table-sm table-bordered" id="preview-table">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:48px">#</th>
+                  <th>hostname</th>
+                  <th>description</th>
+                  <th>group</th>
+                  <th>ip</th>
+                  <th style="width:80px">port</th>
+                  <th>template</th>
+                  <th>tags</th>
+                  <th style="width:110px">latitude</th>
+                  <th style="width:110px">longitude</th>
+                  <th>snmp_community</th>
+                  <th>snmp_categories</th>
+                  <th style="width:90px">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- JS will populate rows from preview_rows JSON -->
+              </tbody>
+            </table>
+
+            <div class="d-flex gap-2">
+              <button type="button" id="btn-confirm-import" class="btn btn-success">Confirmer l'import</button>
+              <a class="btn btn-outline-secondary" href="{{ url_for('hosts_import') }}">Retour</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script id="preview-data" type="application/json">{{ preview_rows | tojson }}</script>
+    <script>
+      (function(){
+        const data = JSON.parse(document.getElementById('preview-data').textContent || '[]') || [];
+        const tbody = document.querySelector('#preview-table tbody');
+
+        function cellInput(col, value) {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'form-control form-control-sm';
+          input.dataset.col = col;
+          input.value = value === null || value === undefined ? '' : String(value);
+          return input;
+        }
+
+        const cols = ['hostname','description','group','ip','port','template','tags','latitude','longitude','snmp_community','snmp_categories'];
+
+        function makeRow(rowData, rowIndex) {
+          const tr = document.createElement('tr');
+          const lineCell = document.createElement('td');
+          lineCell.textContent = rowData._line || '';
+          tr.appendChild(lineCell);
+
+          cols.forEach(col => {
+            const td = document.createElement('td');
+            const input = cellInput(col, rowData[col] || '');
+            td.appendChild(input);
+            tr.appendChild(td);
+          });
+
+          // actions cell
+          const actions = document.createElement('td');
+          const btnDel = document.createElement('button');
+          btnDel.type = 'button';
+          btnDel.className = 'btn btn-sm btn-outline-danger';
+          btnDel.textContent = 'Supprimer';
+          btnDel.addEventListener('click', () => tr.remove());
+          actions.appendChild(btnDel);
+          tr.appendChild(actions);
+
+          return tr;
+        }
+
+        // populate initial rows
+        data.forEach((row, idx) => {
+          const tr = makeRow(row, idx);
+          tbody.appendChild(tr);
+        });
+
+        // Add-row button
+        document.getElementById('btn-add-row').addEventListener('click', function(){
+          const empty = {_line: '',};
+          cols.forEach(c => empty[c] = '');
+          const tr = makeRow(empty, tbody.querySelectorAll('tr').length);
+          tbody.appendChild(tr);
+          // focus the hostname of the new row
+          const inp = tr.querySelector('input[data-col="hostname"]');
+          if (inp) inp.focus();
+        });
+
+        document.getElementById('btn-confirm-import').addEventListener('click', function(){
+          // gather table inputs into rows array
+          const rows = [];
+          const trs = tbody.querySelectorAll('tr');
+          trs.forEach((tr, idx) => {
+            const r = {};
+            cols.forEach(col => {
+              const inp = tr.querySelector(`input[data-col="${col}"]`);
+              r[col] = inp ? inp.value.trim() : '';
+            });
+            // keep original line number if present (empty for added rows)
+            const line = tr.querySelector('td').textContent;
+            r._line = line ? parseInt(line) || null : null;
+            rows.push(r);
+          });
+
+          document.getElementById('rows-json-input').value = JSON.stringify(rows);
+          document.getElementById('confirm-import-form').submit();
+        });
+      })();
+    </script>
+  {% endif %}
 
   {% if report %}
     <div class="card shadow-sm">

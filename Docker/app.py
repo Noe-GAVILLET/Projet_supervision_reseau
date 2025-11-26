@@ -1056,7 +1056,122 @@ def hosts_import_template():
 @login_required
 def hosts_import():
     report = None
+
+    # Flow: POST without 'action=import' => parse CSV and render an editable preview.
+    # If POST with action=import and rows_json => commit the provided rows.
     if request.method == "POST":
+        action = request.form.get("action")
+
+        # === Confirmation importée depuis l'aperçu (données JSON) ===
+        if action == "import":
+            rows_json = request.form.get("rows_json")
+            if not rows_json:
+                flash("Aucune donnée reçue pour l'import.", "danger")
+                return render_template("hosts_import.html", report=None)
+
+            try:
+                rows = json.loads(rows_json)
+            except Exception as e:
+                flash(f"Payload JSON invalide: {e}", "danger")
+                return render_template("hosts_import.html", report=None)
+
+            created, skipped, errors = 0, 0, []
+            seen_hostnames = set()
+
+            try:
+                for idx, row in enumerate(rows, start=1):
+                    hostname = (row.get("hostname") or "").strip()
+                    description = (row.get("description") or "").strip()
+                    group_name = (row.get("group") or "").strip()
+                    ip = (row.get("ip") or "").strip()
+                    port_raw = str(row.get("port") or "161").strip()
+                    template_name = (row.get("template") or "").strip()
+                    tags_raw = (row.get("tags") or "").strip()
+                    snmp_community = (row.get("snmp_community") or "public").strip()
+                    cats_raw = (row.get("snmp_categories") or "system").strip()
+                    snmp_categories = [c.strip() for c in re.split(r"[,\|;]", cats_raw) if c.strip()]
+
+                    lineno = row.get("_line", idx + 1)
+
+                    # validations (same rules que précédemment)
+                    if not hostname:
+                        errors.append(f"L{lineno}: hostname manquant.")
+                        skipped += 1
+                        continue
+                    if hostname in seen_hostnames:
+                        errors.append(f"L{lineno}: hostname dupliqué dans le payload ({hostname}).")
+                        skipped += 1
+                        continue
+                    seen_hostnames.add(hostname)
+
+                    if Host.query.filter_by(hostname=hostname).first():
+                        errors.append(f"L{lineno}: hostname déjà présent en BDD ({hostname}), ignoré.")
+                        skipped += 1
+                        continue
+
+                    try:
+                        ipaddress.ip_address(ip)
+                    except ValueError:
+                        errors.append(f"L{lineno}: IP invalide ({ip}).")
+                        skipped += 1
+                        continue
+
+                    try:
+                        port = int(port_raw)
+                        if port < 1 or port > 65535:
+                            raise ValueError()
+                    except ValueError:
+                        errors.append(f"L{lineno}: port invalide ({port_raw}).")
+                        skipped += 1
+                        continue
+
+                    grp = _ensure_group(group_name)
+                    tpl = _ensure_template(template_name)
+
+                    host = Host(
+                        hostname=hostname,
+                        description=description,
+                        ip=ip,
+                        port=port,
+                        group_id=grp.id if grp else None,
+                        template_id=tpl.id if tpl else None,
+                    )
+
+                    # optional geolocation
+                    try:
+                        latv = row.get('latitude') if isinstance(row, dict) else None
+                        lonv = row.get('longitude') if isinstance(row, dict) else None
+                        host.latitude = float(latv) if latv not in (None, '', 'None') else None
+                        host.longitude = float(lonv) if lonv not in (None, '', 'None') else None
+                    except Exception:
+                        # ignore parsing errors, keep None
+                        host.latitude = None
+                        host.longitude = None
+
+                    host.snmp_community = snmp_community or "public"
+                    host.snmp_categories = snmp_categories or ["system"]
+
+                    for tname in _split_tags(tags_raw):
+                        tag = Tag.query.filter_by(name=tname).first()
+                        if not tag:
+                            tag = Tag(name=tname)
+                        host.tags.append(tag)
+
+                    db.session.add(host)
+                    created += 1
+
+                db.session.commit()
+                report = {"created": created, "skipped": skipped, "errors": errors, "total": created + skipped}
+
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Erreur pendant l'import: {e}", "danger")
+                report = None
+
+            return render_template("hosts_import.html", report=report)
+
+        # === Preview step: parse uploaded CSV and present editable preview ===
+        # otherwise treat as preview request
         f = request.files.get("file")
         if not f or f.filename == "":
             flash("Aucun fichier sélectionné.", "warning")
@@ -1066,99 +1181,28 @@ def hosts_import():
             flash("Format invalide : seul le .csv est accepté.", "danger")
             return render_template("hosts_import.html", report=None)
 
-        # Lecture UTF-8 (gère BOM via utf-8-sig)
         f.stream.seek(0)
         wrapper = TextIOWrapper(f.stream, encoding="utf-8-sig", newline="")
         reader = csv.DictReader(wrapper)
 
-        missing_cols = [c for c in ["hostname", "ip"] if c not in reader.fieldnames]
+        missing_cols = [c for c in ["hostname", "ip"] if c not in (reader.fieldnames or [])]
         if missing_cols:
             flash(f"Colonnes obligatoires manquantes: {', '.join(missing_cols)}.", "danger")
             return render_template("hosts_import.html", report=None)
 
-        created, skipped, errors = 0, 0, []
-        seen_hostnames = set()
+        # Collect preview rows without committing
+        preview_rows = []
+        for lineno, row in enumerate(reader, start=2):
+            # Keep raw values (strip later in server-side validation)
+            preview = {
+                "_line": lineno,
+            }
+            for k, v in (row.items() if row else []):
+                preview[k] = v
+            preview_rows.append(preview)
 
-        try:
-            for lineno, row in enumerate(reader, start=2):  # ligne 1 = header
-                hostname = (row.get("hostname") or "").strip()
-                description = (row.get("description") or "").strip()
-                group_name = (row.get("group") or "").strip()
-                ip = (row.get("ip") or "").strip()
-                port_raw = (row.get("port") or "161").strip()
-                template_name = (row.get("template") or "").strip()
-                tags_raw = (row.get("tags") or "").strip()
-
-                # SNMP v2c (optionnels)
-                snmp_community = (row.get("snmp_community") or "public").strip()
-                cats_raw = (row.get("snmp_categories") or "system").strip()
-                snmp_categories = [c.strip() for c in re.split(r"[,\|;]", cats_raw) if c.strip()]
-
-                # validations
-                if not hostname:
-                    errors.append(f"L{lineno}: hostname manquant.")
-                    skipped += 1
-                    continue
-                if hostname in seen_hostnames:
-                    errors.append(f"L{lineno}: hostname dupliqué dans le CSV ({hostname}).")
-                    skipped += 1
-                    continue
-                seen_hostnames.add(hostname)
-
-                if Host.query.filter_by(hostname=hostname).first():
-                    errors.append(f"L{lineno}: hostname déjà présent en BDD ({hostname}), ignoré.")
-                    skipped += 1
-                    continue
-
-                try:
-                    ipaddress.ip_address(ip)
-                except ValueError:
-                    errors.append(f"L{lineno}: IP invalide ({ip}).")
-                    skipped += 1
-                    continue
-
-                try:
-                    port = int(port_raw)
-                    if port < 1 or port > 65535:
-                        raise ValueError()
-                except ValueError:
-                    errors.append(f"L{lineno}: port invalide ({port_raw}).")
-                    skipped += 1
-                    continue
-
-                grp = _ensure_group(group_name)
-                tpl = _ensure_template(template_name)
-
-                host = Host(
-                    hostname=hostname,
-                    description=description,
-                    ip=ip,
-                    port=port,
-                    group_id=grp.id if grp else None,
-                    template_id=tpl.id if tpl else None,
-                )
-
-                # SNMP v2c
-                host.snmp_community = snmp_community or "public"
-                host.snmp_categories = snmp_categories or ["system"]
-
-                # tags
-                for tname in _split_tags(tags_raw):
-                    tag = Tag.query.filter_by(name=tname).first()
-                    if not tag:
-                        tag = Tag(name=tname)
-                    host.tags.append(tag)
-
-                db.session.add(host)
-                created += 1
-
-            db.session.commit()
-            report = {"created": created, "skipped": skipped, "errors": errors, "total": created + skipped}
-
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Erreur pendant l'import: {e}", "danger")
-            report = None
+        # Render template with preview_rows (client-side JS will render editable table)
+        return render_template("hosts_import.html", preview_rows=preview_rows)
 
     return render_template("hosts_import.html", report=report)
 
