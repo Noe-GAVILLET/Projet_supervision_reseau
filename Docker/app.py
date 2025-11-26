@@ -678,6 +678,7 @@ def localisation():
             'hostname': h.hostname,
             'lat': h.latitude,
             'lon': h.longitude,
+            'status': h.status,
             'ip': h.ip
         }
         for h in hosts
