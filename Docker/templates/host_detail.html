@@ -293,15 +293,34 @@ document.addEventListener("DOMContentLoaded", function () {
     return 10;
   }
 
-  // 🔹 Retourne l'unité de temps Chart.js et les displayFormats en fonction du nombre de minutes
+  // 🔹 Retourne l'unité de temps Chart.js, les displayFormats ET le stepSize (ticks)
+  // Mapping demandé :
+  // - 10 minutes  -> ticks toutes les 1 minute
+  // - 1 heure     -> ticks toutes les 10 minutes
+  // - 24 heures   -> ticks toutes les 30 minutes
   function timeUnitForMinutes(minutes) {
+    // 7 jours ou plus -> affichage par jour
+    if (minutes >= 7 * 24 * 60) {
+      return { unit: 'day', displayFormats: { day: 'MMM d' }, stepSize: 1 };
+    }
+    // 24 heures -> ticks toutes les 30 minutes (unit minute pour step granulaire)
     if (minutes >= 24 * 60) {
-      return { unit: 'day', displayFormats: { day: 'MMM d' } };
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 30 };
     }
-    if (minutes >= 60) {
-      return { unit: 'hour', displayFormats: { hour: 'HH:mm' } };
+    // 1 heure -> ticks toutes les 10 minutes
+    if (minutes === 60) {
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 10 };
     }
-    return { unit: 'minute', displayFormats: { minute: 'HH:mm' } };
+    // Between 60 and 24h (e.g., 2h, 6h) -> use hour unit, 1h steps
+    if (minutes > 60) {
+      return { unit: 'hour', displayFormats: { hour: 'HH:mm' }, stepSize: 1 };
+    }
+    // 10 minutes -> ticks every 1 minute
+    if (minutes === 10) {
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 1 };
+    }
+    // default small windows -> minute unit, 1 minute step
+    return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 1 };
   }
 
   // 🔹 Détecte les gros 'gaps' temporels et insère des points null pour couper la courbe.
@@ -459,6 +478,7 @@ document.addEventListener("DOMContentLoaded", function () {
           charts[category].options.scales.x.min = startTs.toISOString();
           charts[category].options.scales.x.max = endTs.toISOString();
           charts[category].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
+          charts[category].options.scales.x.ticks = { stepSize: tu.stepSize };
           charts[category].update();
         } else {
           // 🔹 Sinon on le crée
@@ -481,7 +501,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 downZone: { intervals: gapIntervals }
               },
               scales: {
-                x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString() },
+                x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString(), ticks: { stepSize: tu.stepSize } },
                 y: yAxisOptions
               }
             }
@@ -571,6 +591,7 @@ document.addEventListener("DOMContentLoaded", function () {
           charts["interfaces"].options.scales.x.min = startTsIf.toISOString();
           charts["interfaces"].options.scales.x.max = endTsIf.toISOString();
           charts["interfaces"].options.scales.x.time = { unit: tuIf.unit, displayFormats: tuIf.displayFormats };
+          charts["interfaces"].options.scales.x.ticks = { stepSize: tuIf.stepSize };
           charts["interfaces"].update();
         } else {
           charts["interfaces"] = new Chart(ctx, {
@@ -600,7 +621,8 @@ document.addEventListener("DOMContentLoaded", function () {
                   time: { unit: tuIf.unit, displayFormats: tuIf.displayFormats },
                   title: { display: true, text: "Horodatage" },
                   min: startTsIf.toISOString(),
-                  max: endTsIf.toISOString()
+                  max: endTsIf.toISOString(),
+                  ticks: { stepSize: tuIf.stepSize }
                 },
                 y: {
                   beginAtZero: true,

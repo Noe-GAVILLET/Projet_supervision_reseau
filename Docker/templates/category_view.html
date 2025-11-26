@@ -218,13 +218,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // 🔹 Retourne l'unité de temps Chart.js et les displayFormats en fonction du nombre de minutes
   function timeUnitForMinutes(minutes) {
+    if (minutes >= 7 * 24 * 60) {
+      return { unit: 'day', displayFormats: { day: 'MMM d' }, stepSize: 1 };
+    }
     if (minutes >= 24 * 60) {
-      return { unit: 'day', displayFormats: { day: 'MMM d' } };
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 30 };
     }
-    if (minutes >= 60) {
-      return { unit: 'hour', displayFormats: { hour: 'HH:mm' } };
+    if (minutes === 60) {
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 10 };
     }
-    return { unit: 'minute', displayFormats: { minute: 'HH:mm' } };
+    if (minutes > 60) {
+      return { unit: 'hour', displayFormats: { hour: 'HH:mm' }, stepSize: 1 };
+    }
+    if (minutes === 10) {
+      return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 1 };
+    }
+    return { unit: 'minute', displayFormats: { minute: 'HH:mm' }, stepSize: 1 };
   }
 
   // 🔹 Détecte les gros 'gaps' temporels et insère des points null pour couper la courbe.
@@ -367,6 +376,7 @@ document.addEventListener('DOMContentLoaded', function () {
           charts[id].options.scales.x.min = startTs.toISOString();
           charts[id].options.scales.x.max = endTs.toISOString();
           charts[id].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
+          charts[id].options.scales.x.ticks = { stepSize: tu.stepSize };
           charts[id].update();
           return;
         }
@@ -385,7 +395,7 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             plugins: { downZone: { intervals: gapIntervals } },
             scales: {
-              x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Horodatage' }, min: startTs.toISOString(), max: endTs.toISOString() },
+              x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Horodatage' }, min: startTs.toISOString(), max: endTs.toISOString(), ticks: { stepSize: tu.stepSize } },
               y: { beginAtZero: true, title: { display: true, text: 'Débit (Mbps)' }, ticks: { callback: (v) => Math.abs(v) } }
             }
           }
@@ -469,6 +479,7 @@ document.addEventListener('DOMContentLoaded', function () {
             charts[id].options.scales.x.min = startTs.toISOString();
             charts[id].options.scales.x.max = endTs.toISOString();
             charts[id].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
+            charts[id].options.scales.x.ticks = { stepSize: tu.stepSize };
             charts[id].update();
             return;
           }
@@ -483,7 +494,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } },
                 downZone: { intervals: gapIntervals }
               },
-              scales: { x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString() }, y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } } }
+              scales: { x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString(), ticks: { stepSize: tu.stepSize } }, y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } } }
             }
           });
       })
