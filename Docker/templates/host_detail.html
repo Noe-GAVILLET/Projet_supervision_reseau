@@ -293,6 +293,85 @@ document.addEventListener("DOMContentLoaded", function () {
     return 10;
   }
 
+  // 🔹 Retourne l'unité de temps Chart.js et les displayFormats en fonction du nombre de minutes
+  function timeUnitForMinutes(minutes) {
+    if (minutes >= 24 * 60) {
+      return { unit: 'day', displayFormats: { day: 'MMM d' } };
+    }
+    if (minutes >= 60) {
+      return { unit: 'hour', displayFormats: { hour: 'HH:mm' } };
+    }
+    return { unit: 'minute', displayFormats: { minute: 'HH:mm' } };
+  }
+
+  // 🔹 Détecte les gros 'gaps' temporels et insère des points null pour couper la courbe.
+  // Retourne la liste d'intervalles [{start: ISO, end: ISO}] représentant les périodes manquantes.
+  function detectAndInsertGaps(datasets) {
+    const allTs = [];
+    datasets.forEach(ds => ds.data.forEach(p => {
+      try { allTs.push(new Date(p.x).getTime()); } catch (e) {}
+    }));
+    allTs.sort((a,b) => a - b);
+    if (allTs.length < 2) return [];
+
+    const deltas = [];
+    for (let i = 1; i < allTs.length; i++) deltas.push(allTs[i] - allTs[i-1]);
+    deltas.sort((a,b)=>a-b);
+    const medianDelta = deltas[Math.floor(deltas.length/2)] || deltas[0] || 60000;
+    const threshold = Math.max(medianDelta * 3, 2 * 60 * 1000); // au moins 2 minutes
+
+    const intervals = [];
+    for (let i = 1; i < allTs.length; i++) {
+      const gap = allTs[i] - allTs[i-1];
+      if (gap > threshold) {
+        const start = new Date(allTs[i-1]).toISOString();
+        const end = new Date(allTs[i]).toISOString();
+        intervals.push({ start, end });
+
+        // insert a null point at midpoint to force Chart.js to break the line
+        const midMs = Math.floor((allTs[i-1] + allTs[i]) / 2);
+        const midISO = new Date(midMs).toISOString();
+        datasets.forEach(ds => {
+          ds.data.push({ x: midISO, y: null });
+          ds.data.sort((a,b) => new Date(a.x) - new Date(b.x));
+        });
+      }
+    }
+    return intervals;
+  }
+
+  // 🔹 Plugin Chart.js pour dessiner une zone rouge lors des périodes down détectées
+  const downZonePlugin = {
+    id: 'downZone',
+    beforeDraw(chart) {
+      const cfg = chart.options.plugins && chart.options.plugins.downZone;
+      if (!cfg || !cfg.intervals || !cfg.intervals.length) return;
+      const xScale = chart.scales.x;
+      if (!xScale) return;
+      const ctx = chart.ctx;
+      const top = chart.chartArea.top;
+      const bottom = chart.chartArea.bottom;
+      ctx.save();
+      ctx.fillStyle = 'rgba(220,53,69,0.12)';
+      cfg.intervals.forEach(iv => {
+        try {
+          const x1 = xScale.getPixelForValue(iv.start);
+          const x2 = xScale.getPixelForValue(iv.end);
+          const left = Math.min(x1, x2);
+          const w = Math.abs(x2 - x1);
+          ctx.fillRect(left, top, w, bottom - top);
+        } catch (e) {}
+      });
+      ctx.restore();
+    }
+  };
+  // register plugin once
+  try {
+    if (typeof Chart !== 'undefined') Chart.register(downZonePlugin);
+  } catch (e) {
+    console.warn('downZone plugin registration failed', e);
+  }
+
   // 🔹 Fonction d’affichage / mise à jour d’une catégorie
   function loadCategory(category, minutes) {
     fetch(`/api/poll/metrics/${hostId}/${category}?minutes=${minutes}`)
@@ -340,7 +419,7 @@ document.addEventListener("DOMContentLoaded", function () {
           Object.assign(byMetric, filtered);
         }
 
-        const datasets = Object.entries(byMetric).map(([metric, points]) => ({
+        let datasets = Object.entries(byMetric).map(([metric, points]) => ({
           label: metric,
           data: points.map(p => ({ x: p.x, y: p.y })),
           fill: false,
@@ -348,6 +427,15 @@ document.addEventListener("DOMContentLoaded", function () {
           pointRadius: 0,       
           pointHoverRadius: 4    
         }));
+
+  // detect gaps and insert nulls to break lines; also get intervals for shading
+  const gapIntervals = detectAndInsertGaps(datasets);
+
+  // Force the x-axis window to the requested period so the chart always shows
+  // the full selected timeframe (even if data covers only part of it).
+  const endTs = new Date();
+  const startTs = new Date(endTs.getTime() - minutes * 60 * 1000);
+  const tu = timeUnitForMinutes(minutes);
 
         const yAxisOptions = {
           beginAtZero: true,
@@ -362,6 +450,15 @@ document.addEventListener("DOMContentLoaded", function () {
         if (charts[category]) {
           charts[category].data.datasets = datasets;
           charts[category].options.plugins.title.text = `Historique ${category.toUpperCase()} (${minutes} min)`;
+          // update downZone intervals
+          if (!charts[category].options.plugins.downZone) charts[category].options.plugins.downZone = {};
+          charts[category].options.plugins.downZone.intervals = gapIntervals;
+          // enforce fixed time window and proper time unit/format
+          if (!charts[category].options.scales) charts[category].options.scales = {};
+          if (!charts[category].options.scales.x) charts[category].options.scales.x = {};
+          charts[category].options.scales.x.min = startTs.toISOString();
+          charts[category].options.scales.x.max = endTs.toISOString();
+          charts[category].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
           charts[category].update();
         } else {
           // 🔹 Sinon on le crée
@@ -370,16 +467,21 @@ document.addEventListener("DOMContentLoaded", function () {
             data: { datasets },
             options: {
               responsive: true,
+              spanGaps: false,
               plugins: {
                 title: { display: true, text: `Historique ${category.toUpperCase()} (${minutes} min)` },
                 tooltip: {
                   callbacks: {
-                    label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
+                    label: ctx => {
+                      if (ctx.parsed && ctx.parsed.y === null) return `${ctx.dataset.label}: (no data)`;
+                      return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`;
+                    }
                   }
-                }
+                },
+                downZone: { intervals: gapIntervals }
               },
               scales: {
-                x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } },
+                x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString() },
                 y: yAxisOptions
               }
             }
@@ -452,9 +554,23 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         ];
 
+  // detect gaps and insert nulls for interfaces as well
+  const gapIntervalsIf = detectAndInsertGaps(datasets);
+
+  // enforce fixed time window for traffic chart
+  const endTsIf = new Date();
+  const startTsIf = new Date(endTsIf.getTime() - minutes * 60 * 1000);
+  const tuIf = timeUnitForMinutes(minutes);
+
         if (charts["interfaces"]) {
           charts["interfaces"].data.datasets = datasets;
           charts["interfaces"].options.plugins.title.text = `Overall Network Traffic (Mbps, ${minutes} min)`;
+          charts["interfaces"].options.plugins.downZone = { intervals: gapIntervalsIf };
+          if (!charts["interfaces"].options.scales) charts["interfaces"].options.scales = {};
+          if (!charts["interfaces"].options.scales.x) charts["interfaces"].options.scales.x = {};
+          charts["interfaces"].options.scales.x.min = startTsIf.toISOString();
+          charts["interfaces"].options.scales.x.max = endTsIf.toISOString();
+          charts["interfaces"].options.scales.x.time = { unit: tuIf.unit, displayFormats: tuIf.displayFormats };
           charts["interfaces"].update();
         } else {
           charts["interfaces"] = new Chart(ctx, {
@@ -462,6 +578,7 @@ document.addEventListener("DOMContentLoaded", function () {
             data: { datasets },
             options: {
               responsive: true,
+              spanGaps: false,
               interaction: { mode: "index", intersect: false },
               stacked: false,
               plugins: {
@@ -469,15 +586,21 @@ document.addEventListener("DOMContentLoaded", function () {
                 title: { display: true, text: `Overall Network Traffic (Mbps, ${minutes} min)` },
                 tooltip: {
                   callbacks: {
-                    label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`
+                    label: (ctx) => {
+                      if (ctx.parsed && ctx.parsed.y === null) return `${ctx.dataset.label}: (no data)`;
+                      return `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps`;
+                    }
                   }
-                }
+                },
+                downZone: { intervals: gapIntervalsIf }
               },
               scales: {
                 x: {
                   type: "time",
-                  time: { unit: "minute", displayFormats: { minute: "HH:mm" } },
-                  title: { display: true, text: "Horodatage" }
+                  time: { unit: tuIf.unit, displayFormats: tuIf.displayFormats },
+                  title: { display: true, text: "Horodatage" },
+                  min: startTsIf.toISOString(),
+                  max: endTsIf.toISOString()
                 },
                 y: {
                   beginAtZero: true,

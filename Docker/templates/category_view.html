@@ -216,6 +216,80 @@ document.addEventListener('DOMContentLoaded', function () {
     return 10;
   }
 
+  // 🔹 Retourne l'unité de temps Chart.js et les displayFormats en fonction du nombre de minutes
+  function timeUnitForMinutes(minutes) {
+    if (minutes >= 24 * 60) {
+      return { unit: 'day', displayFormats: { day: 'MMM d' } };
+    }
+    if (minutes >= 60) {
+      return { unit: 'hour', displayFormats: { hour: 'HH:mm' } };
+    }
+    return { unit: 'minute', displayFormats: { minute: 'HH:mm' } };
+  }
+
+  // 🔹 Détecte les gros 'gaps' temporels et insère des points null pour couper la courbe.
+  // Retourne la liste d'intervalles [{start: ISO, end: ISO}] représentant les périodes manquantes.
+  function detectAndInsertGaps(datasets) {
+    const allTs = [];
+    datasets.forEach(ds => ds.data.forEach(p => {
+      try { allTs.push(new Date(p.x).getTime()); } catch (e) {}
+    }));
+    allTs.sort((a,b) => a - b);
+    if (allTs.length < 2) return [];
+
+    const deltas = [];
+    for (let i = 1; i < allTs.length; i++) deltas.push(allTs[i] - allTs[i-1]);
+    deltas.sort((a,b)=>a-b);
+    const medianDelta = deltas[Math.floor(deltas.length/2)] || deltas[0] || 60000;
+    const threshold = Math.max(medianDelta * 3, 2 * 60 * 1000); // au moins 2 minutes
+
+    const intervals = [];
+    for (let i = 1; i < allTs.length; i++) {
+      const gap = allTs[i] - allTs[i-1];
+      if (gap > threshold) {
+        const start = new Date(allTs[i-1]).toISOString();
+        const end = new Date(allTs[i]).toISOString();
+        intervals.push({ start, end });
+
+        // insert a null point at midpoint to force Chart.js to break the line
+        const midMs = Math.floor((allTs[i-1] + allTs[i]) / 2);
+        const midISO = new Date(midMs).toISOString();
+        datasets.forEach(ds => {
+          ds.data.push({ x: midISO, y: null });
+          ds.data.sort((a,b) => new Date(a.x) - new Date(b.x));
+        });
+      }
+    }
+    return intervals;
+  }
+
+  // 🔹 Plugin Chart.js pour dessiner une zone rouge lors des périodes down détectées
+  const downZonePlugin = {
+    id: 'downZone',
+    beforeDraw(chart) {
+      const cfg = chart.options.plugins && chart.options.plugins.downZone;
+      if (!cfg || !cfg.intervals || !cfg.intervals.length) return;
+      const xScale = chart.scales.x;
+      if (!xScale) return;
+      const ctx = chart.ctx;
+      const top = chart.chartArea.top;
+      const bottom = chart.chartArea.bottom;
+      ctx.save();
+      ctx.fillStyle = 'rgba(220,53,69,0.12)';
+      cfg.intervals.forEach(iv => {
+        try {
+          const x1 = xScale.getPixelForValue(iv.start);
+          const x2 = xScale.getPixelForValue(iv.end);
+          const left = Math.min(x1, x2);
+          const w = Math.abs(x2 - x1);
+          ctx.fillRect(left, top, w, bottom - top);
+        } catch (e) {}
+      });
+      ctx.restore();
+    }
+  };
+  try { if (typeof Chart !== 'undefined') Chart.register(downZonePlugin); } catch (e) { console.warn('downZone plugin registration failed', e); }
+
   // ---- Interfaces (traffic) ----
   function loadInterfacesCanvas(canvas) {
     const hostId = canvas.id.split('-').pop();
@@ -224,7 +298,7 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch(`/api/poll/metrics/${hostId}/interfaces?minutes=${minutes}`)
       .then(r => r.json())
       .then(data => {
-        if (!data || data.length === 0) return;
+  if (!data || data.length === 0) return;
 
         const totalIn = {}, totalOut = {};
         data.forEach(entry => {
@@ -276,10 +350,23 @@ document.addEventListener('DOMContentLoaded', function () {
           }
         ];
 
+        // detect gaps and insert nulls; get intervals for shading
+        const gapIntervals = detectAndInsertGaps(datasets);
+
+        const endTs = new Date();
+        const startTs = new Date(endTs.getTime() - minutes * 60 * 1000);
+        const tu = timeUnitForMinutes(minutes);
+
         const id = canvas.id;
         if (charts[id]) {
           charts[id].data.datasets = datasets;
           charts[id].options.plugins.title.text = `Overall Network Traffic (Mbps, ${minutes} min)`;
+          charts[id].options.plugins.downZone = { intervals: gapIntervals };
+          if (!charts[id].options.scales) charts[id].options.scales = {};
+          if (!charts[id].options.scales.x) charts[id].options.scales.x = {};
+          charts[id].options.scales.x.min = startTs.toISOString();
+          charts[id].options.scales.x.max = endTs.toISOString();
+          charts[id].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
           charts[id].update();
           return;
         }
@@ -296,8 +383,9 @@ document.addEventListener('DOMContentLoaded', function () {
               title: { display: true, text: `Overall Network Traffic (Mbps, ${minutes} min)` },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.parsed.y).toFixed(3)} Mbps` } }
             },
+            plugins: { downZone: { intervals: gapIntervals } },
             scales: {
-              x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Horodatage' } },
+              x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Horodatage' }, min: startTs.toISOString(), max: endTs.toISOString() },
               y: { beginAtZero: true, title: { display: true, text: 'Débit (Mbps)' }, ticks: { callback: (v) => Math.abs(v) } }
             }
           }
@@ -353,38 +441,51 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch(`/api/poll/metrics/${hostId}/${category}?minutes=${minutes}`)
       .then(r => r.json())
       .then(data => {
-        if (!data || data.length === 0) return;
-        const byMetric = buildByMetric(data);
-        const datasets = Object.entries(byMetric).map(([metric, points]) => ({
-          label: metric,
-          data: points.map(p => ({ x: p.x, y: p.y })),
-          fill: false,
-          tension: 0.2,
-          pointRadius: 0,
-          pointHoverRadius: 4
-        }));
+          if (!data || data.length === 0) return;
+          const byMetric = buildByMetric(data);
+          const datasets = Object.entries(byMetric).map(([metric, points]) => ({
+            label: metric,
+            data: points.map(p => ({ x: p.x, y: p.y })),
+            fill: false,
+            tension: 0.2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }));
 
-        const id = canvas.id;
-        const minutesText = `${minutes} min`;
-        if (charts[id]) {
-          charts[id].data.datasets = datasets;
-          charts[id].options.plugins.title.text = `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})`;
-          charts[id].update();
-          return;
-        }
+          // detect gaps and insert nulls; get intervals for shading
+          const gapIntervals = detectAndInsertGaps(datasets);
+          const endTs = new Date();
+          const startTs = new Date(endTs.getTime() - minutes * 60 * 1000);
+          const tu = timeUnitForMinutes(minutes);
 
-        charts[id] = new Chart(canvas.getContext('2d'), {
-          type: 'line',
-          data: { datasets },
-          options: {
-            responsive: true,
-            plugins: {
-              title: { display: true, text: `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})` },
-              tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } }
-            },
-            scales: { x: { type: 'time', time: { unit: 'minute' }, title: { display: true, text: 'Temps' } }, y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } } }
+          const id = canvas.id;
+          const minutesText = `${minutes} min`;
+          if (charts[id]) {
+            charts[id].data.datasets = datasets;
+            charts[id].options.plugins.title.text = `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})`;
+            charts[id].options.plugins.downZone = { intervals: gapIntervals };
+            if (!charts[id].options.scales) charts[id].options.scales = {};
+            if (!charts[id].options.scales.x) charts[id].options.scales.x = {};
+            charts[id].options.scales.x.min = startTs.toISOString();
+            charts[id].options.scales.x.max = endTs.toISOString();
+            charts[id].options.scales.x.time = { unit: tu.unit, displayFormats: tu.displayFormats };
+            charts[id].update();
+            return;
           }
-        });
+
+          charts[id] = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: { datasets },
+            options: {
+              responsive: true,
+              plugins: {
+                title: { display: true, text: `${category.toUpperCase()} - ${canvas.id.split('-').slice(1, -1).join('-')} (${minutesText})` },
+                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } },
+                downZone: { intervals: gapIntervals }
+              },
+              scales: { x: { type: 'time', time: { unit: tu.unit, displayFormats: tu.displayFormats }, title: { display: true, text: 'Temps' }, min: startTs.toISOString(), max: endTs.toISOString() }, y: { beginAtZero: true, max: 100, title: { display: true, text: 'Utilisation (%)' } } }
+            }
+          });
       })
       .catch(e => console.error(`Erreur ${category} (${canvas.id}) :`, e));
   }
