@@ -22,8 +22,8 @@
             <th>Hostname</th>
             <th>IP:Port</th>
             <th>Groupe</th>
-            <th>Template</th>
             <th>Tags</th>
+            <th>État</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -33,7 +33,6 @@
             <td>{{ h.hostname }}</td>
             <td>{{ h.ip }}:{{ h.port }}</td>
             <td>{{ h.group.name if h.group else "-" }}</td>
-            <td>{{ h.template.name if h.template else "-" }}</td>
             <td>
               {% if h.tags %}
                 {% for t in h.tags %}
@@ -41,13 +40,45 @@
                 {% endfor %}
               {% else %}-{% endif %}
             </td>
+
+            <td class="align-middle">
+              {% if h.status == 'down' %}
+                <span class="badge bg-danger me-2">
+                  <i class="fas fa-stop-circle"></i> DOWN
+                </span>
+              {% elif h.status == 'warning' %}
+                <span class="badge bg-warning text-dark me-2">
+                  <i class="fas fa-exclamation-triangle"></i> Warning
+                </span>
+              {% elif h.status == 'up' %}
+                <span class="badge bg-success me-2">
+                  <i class="fas fa-check-circle"></i> UP
+                </span>
+              {% else %}
+                <span class="badge bg-secondary me-2">
+                  <i class="fas fa-question-circle"></i> Inconnu
+                </span>
+              {% endif %}
+
+              {% if h.uptime_str and h.uptime_str != '—' %}
+                <small class="text-muted uptime-display" data-uptime-seconds="{{ h.uptime_seconds }}">{{ h.uptime_str }}</small>
+              {% endif %}
+            </td>
+
             <td class="text-end">
-              <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
-              <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">Edit</a>
-              <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
-                    onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
-                <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
-              </form>
+              <div class="d-flex justify-content-end align-items-center">
+                {% if h.status == 'down' %}
+                  <button class="btn btn-sm btn-outline-secondary disabled me-1" aria-disabled="true">Injoignable</button>
+                {% else %}
+                  <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('host_view', host_id=h.id) }}">View</a>
+                {% endif %}
+
+                <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('host_edit', host_id=h.id) }}">Edit</a>
+                <form class="d-inline" method="post" action="{{ url_for('host_delete', host_id=h.id) }}"
+                      onsubmit="return confirm('Supprimer définitivement {{ h.hostname }} ?');">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}
